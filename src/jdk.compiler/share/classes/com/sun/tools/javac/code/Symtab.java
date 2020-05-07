@@ -219,6 +219,7 @@ public class Symtab {
     public final Type previewFeatureType;
     public final Type typeDescriptorType;
     public final Type recordType;
+    public final Type switchBootstrapsType;
 
     /** The symbol representing the length field of an array.
      */
@@ -582,6 +583,7 @@ public class Symtab {
         previewFeatureType = enterClass("jdk.internal.PreviewFeature");
         typeDescriptorType = enterClass("java.lang.invoke.TypeDescriptor");
         recordType = enterClass("java.lang.Record");
+        switchBootstrapsType = enterClass("java.lang.runtime.SwitchBootstraps");
 
         synthesizeEmptyInterfaceIfMissing(autoCloseableType);
         synthesizeEmptyInterfaceIfMissing(cloneableType);

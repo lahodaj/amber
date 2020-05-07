@@ -1422,14 +1422,21 @@ public class JavacParser implements Parser {
     private List<JCCase> switchExpressionStatementGroup() {
         ListBuffer<JCCase> caseExprs = new ListBuffer<>();
         int casePos = token.pos;
-        ListBuffer<JCExpression> pats = new ListBuffer<>();
+        ListBuffer<JCPattern> pats = new ListBuffer<>();
 
         if (token.kind == DEFAULT) {
             nextToken();
         } else {
             accept(CASE);
             while (true) {
-                pats.append(term(EXPR | NOLAMBDA));
+                JCExpression e = term(EXPR | TYPE | NOLAMBDA);
+                JCPattern p;
+                if (token.kind == IDENTIFIER) {
+                    p = toP(F.at(token.pos).BindingPattern(ident(), e));
+                } else {
+                    p = toP(F.at(e).ExpressionPattern(e));
+                }
+                pats.append(p);
                 if (token.kind != COMMA) break;
                 checkSourceLevel(Feature.SWITCH_MULTIPLE_CASE_LABELS);
                 nextToken();
@@ -2900,9 +2907,16 @@ public class JavacParser implements Parser {
         switch (token.kind) {
         case CASE: {
             nextToken();
-            ListBuffer<JCExpression> pats = new ListBuffer<>();
+            ListBuffer<JCPattern> pats = new ListBuffer<>();
             while (true) {
-                pats.append(term(EXPR | NOLAMBDA));
+                JCExpression e = term(EXPR | TYPE | NOLAMBDA);
+                JCPattern p;
+                if (token.kind == IDENTIFIER) {
+                    p = toP(F.at(token.pos).BindingPattern(ident(), e));
+                } else {
+                    p = toP(F.at(e).ExpressionPattern(e));
+                }
+                pats.append(p);
                 if (token.kind != COMMA) break;
                 nextToken();
                 checkSourceLevel(Feature.SWITCH_MULTIPLE_CASE_LABELS);

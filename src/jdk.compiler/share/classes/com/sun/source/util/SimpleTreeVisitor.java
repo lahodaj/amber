@@ -564,6 +564,11 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
         return defaultAction(node, p);
     }
 
+    @Override
+    public R visitExpressionPattern(ExpressionPatternTree node, P p) {
+        return defaultAction(node, p);
+    }
+
     /**
      * {@inheritDoc} This implementation calls {@code defaultAction}.
      *

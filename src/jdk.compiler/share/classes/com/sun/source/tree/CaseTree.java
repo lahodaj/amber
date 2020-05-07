@@ -66,6 +66,14 @@ public interface CaseTree extends Tree {
     List<? extends ExpressionTree> getExpressions();
 
     /**
+     * Returns the labels for this case.
+     * For default case, returns an empty list.
+     *
+     * @return labels for this case
+     */
+    List<? extends PatternTree> getPatterns();
+
+    /**
      * For case with kind {@linkplain CaseKind#STATEMENT},
      * returns the statements labeled by the case.
      * Returns {@code null} for case with kind

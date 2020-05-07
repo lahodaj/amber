@@ -3615,7 +3615,7 @@ public class Lower extends TreeTranslator {
                     //case C1:
                     //case C2:
                     //case C3: ...
-                    List<JCExpression> patterns = c.pats;
+                    List<JCPattern> patterns = c.pats;
                     while (patterns.tail.nonEmpty()) {
                         convertedCases.append(make_at(c.pos()).Case(JCCase.STATEMENT,
                                                            List.of(patterns.head),
@@ -3680,9 +3680,9 @@ public class Lower extends TreeTranslator {
         ListBuffer<JCCase> newCases = new ListBuffer<>();
         for (JCCase c : cases) {
             if (c.pats.nonEmpty()) {
-                VarSymbol label = (VarSymbol)TreeInfo.symbol(c.pats.head);
+                VarSymbol label = (VarSymbol)TreeInfo.symbol(((JCExpressionPattern) c.pats.head).value);
                 JCLiteral pat = map.forConstant(label);
-                newCases.append(make.Case(JCCase.STATEMENT, List.of(pat), c.stats, null));
+                newCases.append(make.Case(JCCase.STATEMENT, List.of(make.ExpressionPattern(pat)), c.stats, null));
             } else {
                 newCases.append(c);
             }
@@ -3761,7 +3761,7 @@ public class Lower extends TreeTranslator {
 
             for(JCCase oneCase : caseList) {
                 if (oneCase.pats.nonEmpty()) { // pats is empty for a "default" case
-                    JCExpression expression = oneCase.pats.head;
+                    JCExpression expression = ((JCExpressionPattern) oneCase.pats.head).value;
                     String labelExpr = (String) expression.type.constValue();
                     Integer mapping = caseLabelToPosition.put(labelExpr, casePosition);
                     Assert.checkNull(mapping);
@@ -3845,7 +3845,7 @@ public class Lower extends TreeTranslator {
                 breakStmt.target = switch1;
                 lb.append(elsepart).append(breakStmt);
 
-                caseBuffer.append(make.Case(JCCase.STATEMENT, List.of(make.Literal(hashCode)), lb.toList(), null));
+                caseBuffer.append(make.Case(JCCase.STATEMENT, List.of(make.ExpressionPattern(make.Literal(hashCode))), lb.toList(), null));
             }
 
             switch1.cases = caseBuffer.toList();
@@ -3858,12 +3858,12 @@ public class Lower extends TreeTranslator {
             ListBuffer<JCCase> lb = new ListBuffer<>();
             for(JCCase oneCase : caseList ) {
                 boolean isDefault = (oneCase.pats.isEmpty());
-                JCExpression caseExpr;
+                JCPattern caseExpr;
                 if (isDefault)
                     caseExpr = null;
                 else {
-                    caseExpr = make.Literal(caseLabelToPosition.get((String)TreeInfo.skipParens(oneCase.pats.head).
-                                                                    type.constValue()));
+                    caseExpr = make.ExpressionPattern(make.Literal(caseLabelToPosition.get((String)TreeInfo.skipParens(((JCExpressionPattern) oneCase.pats.head).value).
+                                                                    type.constValue())));
                 }
 
                 lb.append(make.Case(JCCase.STATEMENT, caseExpr == null ? List.nil() : List.of(caseExpr),

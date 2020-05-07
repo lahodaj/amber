@@ -307,6 +307,10 @@ public class TreeScanner extends Visitor {
             scan(tree.vartype);
     }
 
+    public void visitExpressionPattern(JCExpressionPattern tree) {
+        scan(tree.value);
+    }
+
     public void visitIndexed(JCArrayAccess tree) {
         scan(tree.indexed);
         scan(tree.index);

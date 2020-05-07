@@ -667,7 +667,7 @@ public class Flow {
                 if (c.pats.isEmpty())
                     hasDefault = true;
                 else {
-                    for (JCExpression pat : c.pats) {
+                    for (JCPattern pat : c.pats) {
                         scan(pat);
                     }
                 }
@@ -711,13 +711,16 @@ public class Flow {
                 if (c.pats.isEmpty())
                     hasDefault = true;
                 else {
-                    for (JCExpression pat : c.pats) {
+                    for (JCPattern pat : c.pats) {
                         scan(pat);
                         if (constants != null) {
-                            if (pat.hasTag(IDENT))
-                                constants.remove(((JCIdent) pat).name);
-                            if (pat.type != null)
-                                constants.remove(pat.type.constValue());
+                            if (pat.hasTag(EXPRESSIONPATTERN)) {
+                                JCExpression expr = ((JCExpressionPattern) pat).value;
+                                if (expr.hasTag(IDENT))
+                                    constants.remove(((JCIdent) expr).name);
+                                if (expr.type != null)
+                                    constants.remove(expr.type.constValue());
+                            }
                         }
                     }
                 }
@@ -2370,7 +2373,7 @@ public class Flow {
                 if (c.pats.isEmpty()) {
                     hasDefault = true;
                 } else {
-                    for (JCExpression pat : c.pats) {
+                    for (JCPattern pat : c.pats) {
                         scanExpr(pat);
                     }
                 }

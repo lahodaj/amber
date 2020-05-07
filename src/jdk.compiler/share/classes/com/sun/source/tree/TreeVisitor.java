@@ -273,6 +273,14 @@ public interface TreeVisitor<R,P> {
      * @since 14
      */
     R visitBindingPattern(BindingPatternTree node, P p);
+    
+    /**
+     * X
+     * @param node X
+     * @param p X
+     * @return X
+     */
+    R visitExpressionPattern(ExpressionPatternTree node, P p);
 
     /**
      * Visits a MethodTree node.

@@ -233,6 +233,11 @@ public interface Tree {
          * @since 14
          */
         BINDING_PATTERN(BindingPatternTree.class),
+        
+        /**
+         * X
+         */
+        EXPRESSION_PATTERN(ExpressionPatternTree.class),
 
         /**
          * Used for instances of {@link PrimitiveTypeTree}.

@@ -117,6 +117,13 @@ public class MatchBindingsComputer extends TreeScanner {
         return EMPTY;
     }
 
+    public MatchBindings switchCase(JCTree tree, MatchBindings prevBindings, MatchBindings currentBindings) {
+        if (prevBindings == null)
+            return currentBindings;
+        return new MatchBindings(intersection(tree.pos(), prevBindings.bindingsWhenTrue, prevBindings.bindingsWhenTrue),
+                                 intersection(tree.pos(), prevBindings.bindingsWhenFalse, prevBindings.bindingsWhenFalse));
+    }
+
     public MatchBindings finishBindings(JCTree tree, MatchBindings matchBindings) {
         switch (tree.getTag()) {
             case NOT: case AND: case OR: case BINDINGPATTERN:

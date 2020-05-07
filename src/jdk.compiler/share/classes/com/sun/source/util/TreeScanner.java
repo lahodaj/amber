@@ -688,6 +688,11 @@ public class TreeScanner<R,P> implements TreeVisitor<R,P> {
         return scan(node.getType(), p);
     }
 
+    @Override
+    public R visitExpressionPattern(ExpressionPatternTree node, P p) {
+        return scan(node.getExpression(), p);
+    }
+
     /**
      * {@inheritDoc} This implementation scans the children in left to right order.
      *
