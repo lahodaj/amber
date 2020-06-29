@@ -47,6 +47,7 @@ import com.sun.tools.javac.tree.JCTree.JCInstanceOf;
 import com.sun.tools.javac.tree.JCTree.JCLabeledStatement;
 import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
 import com.sun.tools.javac.tree.JCTree.JCSwitch;
+import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
 import com.sun.tools.javac.tree.JCTree.JCVariableDecl;
 import com.sun.tools.javac.tree.JCTree.JCBindingPattern;
 import com.sun.tools.javac.tree.JCTree.JCWhileLoop;
@@ -203,7 +204,18 @@ public class TransPatterns extends TreeTranslator {
 
     @Override
     public void visitSwitch(JCSwitch tree) {
-        Type seltype = tree.selector.type;
+        handleSwitch(tree, tree.selector, tree.cases);
+    }
+
+    @Override
+    public void visitSwitchExpression(JCSwitchExpression tree) {
+        handleSwitch(tree, tree.selector, tree.cases);
+    }
+
+    private void handleSwitch(JCTree tree,
+                              JCExpression selector,
+                              List<JCCase> cases) {
+        Type seltype = selector.type;
         //from Attr.handleSwitch:
             boolean enumSwitch = (seltype.tsym.flags() & Flags.ENUM) != 0;
             boolean stringSwitch = types.isSameType(seltype, syms.stringType);
@@ -214,7 +226,7 @@ public class TransPatterns extends TreeTranslator {
                     names.fromString(tree.pos + target.syntheticNameChar() + "temp"),
                     seltype,
                     currentMethodSym); //XXX:owner - verify field inits!
-            statements.append(make.at(tree.pos).VarDef(temp, attr.makeNullCheck(tree.selector)));
+            statements.append(make.at(tree.pos).VarDef(temp, attr.makeNullCheck(selector)));
             List<Type> staticArgTypes = List.of(syms.methodHandleLookupType,
                                                 syms.stringType,
                                                 syms.methodTypeType,
@@ -222,7 +234,7 @@ public class TransPatterns extends TreeTranslator {
                                                                   List.of(new WildcardType(syms.objectType, BoundKind.UNBOUND,
                                                                                            syms.boundClass)),
                                                                   syms.classType.tsym)));
-            LoadableConstant[] staticArgValues = tree.cases.stream().flatMap(c -> c.pats.stream()).map(p -> (JCBindingPattern) p).map(p -> p.symbol.type).toArray(s -> new LoadableConstant[s]);
+            LoadableConstant[] staticArgValues = cases.stream().flatMap(c -> c.pats.stream()).map(p -> (JCBindingPattern) p).map(p -> p.symbol.type).toArray(s -> new LoadableConstant[s]);
 
             Symbol bsm = rs.resolveInternalMethod(tree.pos(), env, syms.switchBootstrapsType,
                     names.fromString("typeSwitch"), staticArgTypes, List.nil());
@@ -243,11 +255,11 @@ public class TransPatterns extends TreeTranslator {
         qualifier.sym = dynSym;
         qualifier.type = syms.intType;
 
-        tree.selector = make.Apply(List.nil(), qualifier, List.of(make.Ident(temp))).setType(syms.intType);
+        selector = make.Apply(List.nil(), qualifier, List.of(make.Ident(temp))).setType(syms.intType);
         int i = 0;
         boolean previousCompletesNormally = false;
 
-        for (var c : tree.cases) {
+        for (var c : cases) {
             if (c.pats.size() == 1 && !previousCompletesNormally) {
                 VarSymbol binding = ((JCBindingPattern) c.pats.head).symbol;
                 c.stats = translate(c.stats);
@@ -261,28 +273,25 @@ public class TransPatterns extends TreeTranslator {
             previousCompletesNormally = c.completesNormally;
         }
         
-        statements.append(tree);
-        result = make.Block(0, statements.toList());
+        if (tree.hasTag(Tag.SWITCH)) {
+            ((JCSwitch) tree).selector = selector;
+            statements.append((JCSwitch) tree);
+            result = make.Block(0, statements.toList());
+        } else {
+            ((JCSwitchExpression) tree).selector = selector;
+            LetExpr r = (LetExpr) make.LetExpr(statements.toList(), (JCSwitchExpression) tree).setType(tree.type);
+
+            r.needsCond = true;
+            result = r;
+        }
         return ;
         //TODO: add null (-1) handling!
-//        JCFieldAccess qualifier = make.Select(make.QualIdent(site.tsym), argName);
-//        qualifier.sym = dynSym;
-//        qualifier.type = msym.type.asMethodType().restype;
-//        return qualifier;
-//            
-//            +                Type intArray = new ArrayType(syms.intType, syms.arrayClass);
-//+
-//+                MethodType indyType = new MethodType(bsm_staticArgs, intArray, List.nil(), syms.methodClass);
-//+
-//+                this.translateBootstrap = new MethodSymbol(STATIC | SYNTHETIC, varName, indyType, outerCacheClass);
-//+                this.mapVar = new Symbol.DynamicVarSymbol(varName,
-//+                        syms.noSymbol,
-//+                        ClassFile.REF_invokeStatic,
-//+                        translateBootstrap,
-//+                        intArray,
-//+                        new Object[0]);
         }
-        super.visitSwitch(tree);
+        if (tree.hasTag(Tag.SWITCH)) {
+            super.visitSwitch((JCSwitch) tree);
+        } else {
+            super.visitSwitchExpression((JCSwitchExpression) tree);
+        }
     }
     
     @Override

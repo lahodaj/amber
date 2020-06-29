@@ -21,6 +21,8 @@
  * questions.
  */
 
+import java.util.function.Function;
+
 /*
  * @test
  * @bug 9999999
@@ -34,15 +36,21 @@ public class Switches {
     }
 
     void run() {
-        assertEquals(2, typeTestPatternSwitchTest("2"));
-        assertEquals(3, typeTestPatternSwitchTest("3"));
-        assertEquals(8, typeTestPatternSwitchTest(new StringBuilder("4")));
-        assertEquals(2, typeTestPatternSwitchTest(2));
-        assertEquals(3, typeTestPatternSwitchTest(3));
-        assertEquals(-1, typeTestPatternSwitchTest(2.0));
-        assertEquals(-1, typeTestPatternSwitchTest(new Object()));
+        run(this::typeTestPatternSwitchTest);
+        run(this::typeTestPatternSwitchExpressionTest);
+        run(this::testBooleanSwitchExpression);
+    }
+
+    void run(Function<Object, Integer> mapper) {
+        assertEquals(2, mapper.apply("2"));
+        assertEquals(3, mapper.apply("3"));
+        assertEquals(8, mapper.apply(new StringBuilder("4")));
+        assertEquals(2, mapper.apply(2));
+        assertEquals(3, mapper.apply(3));
+        assertEquals(-1, mapper.apply(2.0));
+        assertEquals(-1, mapper.apply(new Object()));
         try {
-            typeTestPatternSwitchTest(null);
+            mapper.apply(null);
             throw new AssertionError("Expected a NullPointerException, but got nothing.");
         } catch (NullPointerException ex) {
             //OK
@@ -57,6 +65,35 @@ public class Switches {
             case Object x: return -1;
             default: return -2; //TODO - needed?
         }
+    }
+
+    int typeTestPatternSwitchExpressionTest(Object o) {
+        return switch (o) {
+            case String s -> Integer.parseInt(s.toString());
+            case CharSequence s -> { yield 2 * Integer.parseInt(s.toString()); }
+            case Integer i -> i;
+            case Object x -> -1;
+            default -> -2; //TODO - needed?
+        };
+    }
+
+    int testBooleanSwitchExpression(Object o) {
+        Object x;
+        if (switch (o) {
+            case String s -> (x = s) != null;
+            default -> false;
+        }) {
+            return Integer.parseInt(x.toString());
+        } else if (switch (o) {
+            case CharSequence s -> {
+                x = s;
+                yield true;
+            }
+            default -> false;
+        }) {
+            return 2 * Integer.parseInt(x.toString());
+        }
+        return typeTestPatternSwitchTest(o);
     }
 
     void assertEquals(int expected, int actual) {
