@@ -47,7 +47,6 @@ import com.sun.tools.javac.tree.JCTree.JCInstanceOf;
 import com.sun.tools.javac.tree.JCTree.JCLabeledStatement;
 import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
 import com.sun.tools.javac.tree.JCTree.JCSwitch;
-import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
 import com.sun.tools.javac.tree.JCTree.JCVariableDecl;
 import com.sun.tools.javac.tree.JCTree.JCBindingPattern;
 import com.sun.tools.javac.tree.JCTree.JCWhileLoop;
@@ -75,12 +74,14 @@ import com.sun.tools.javac.jvm.Target;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCCase;
+import com.sun.tools.javac.tree.JCTree.JCContinue;
 import com.sun.tools.javac.tree.JCTree.JCDoWhileLoop;
 import com.sun.tools.javac.tree.JCTree.JCExpressionPattern;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCLambda;
 import com.sun.tools.javac.tree.JCTree.JCPattern;
 import com.sun.tools.javac.tree.JCTree.JCStatement;
+import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
 import com.sun.tools.javac.tree.JCTree.LetExpr;
 import com.sun.tools.javac.util.List;
 import java.util.HashMap;
@@ -227,6 +228,11 @@ public class TransPatterns extends TreeTranslator {
                     seltype,
                     currentMethodSym); //XXX:owner - verify field inits!
             statements.append(make.at(tree.pos).VarDef(temp, attr.makeNullCheck(selector)));
+            VarSymbol index = new VarSymbol(Flags.SYNTHETIC,
+                    names.fromString(tree.pos + target.syntheticNameChar() + "index"),
+                    syms.intType,
+                    currentMethodSym); //XXX:owner - verify field inits!
+            statements.append(make.at(tree.pos).VarDef(index, makeLit(syms.intType, 0)));
             List<Type> staticArgTypes = List.of(syms.methodHandleLookupType,
                                                 syms.stringType,
                                                 syms.methodTypeType,
@@ -240,7 +246,7 @@ public class TransPatterns extends TreeTranslator {
                     names.fromString("typeSwitch"), staticArgTypes, List.nil());
 
             MethodType indyType = new MethodType(
-                    List.of(syms.objectType),
+                    List.of(syms.objectType, syms.intType),
                     syms.intType,
                     List.nil(),
                     syms.methodClass
@@ -255,15 +261,40 @@ public class TransPatterns extends TreeTranslator {
         qualifier.sym = dynSym;
         qualifier.type = syms.intType;
 
-        selector = make.Apply(List.nil(), qualifier, List.of(make.Ident(temp))).setType(syms.intType);
+        selector = make.Apply(List.nil(), qualifier, List.of(make.Ident(temp), make.Ident(index))).setType(syms.intType);
+
         int i = 0;
         boolean previousCompletesNormally = false;
 
         for (var c : cases) {
             if (c.pats.size() == 1 && !previousCompletesNormally) {
-                VarSymbol binding = ((JCBindingPattern) c.pats.head).symbol;
+                JCBindingPattern b = (JCBindingPattern) c.pats.head;
+                VarSymbol binding = (b).symbol;
                 c.stats = translate(c.stats);
                 c.stats = c.stats.prepend(make.VarDef(binding, make.TypeCast(binding.type, make.Ident(temp))));
+                if (b.guard != null) {
+                    VarSymbol tempBinding = new VarSymbol(Flags.SYNTHETIC,
+                            names.fromString(tree.pos + target.syntheticNameChar() + binding.name.toString()),
+                            binding.type,
+                            currentMethodSym); //XXX:owner - verify field inits!
+                    JCContinue continueSwitch = make.Continue(null);
+                    continueSwitch.target = tree;
+                    JCExpression updatedGuard = new TreeTranslator() {
+                        @Override
+                        public void visitIdent(JCIdent tree) {
+                            super.visitIdent(tree);
+                            if (tree.sym == b.symbol) {
+                                result = make.TypeCast(b.symbol.type, make.Ident(tempBinding));
+                            }
+                        }
+                    }.translate(b.guard);
+
+                    c.stats = c.stats.prepend(make.Block(0, List.of(make.VarDef(tempBinding, make.TypeCast(binding.type, make.Ident(temp))), //duplicate, so that the variable is removed before the continue finishes - might be possible to optimize
+                                                                    make.If(make.Unary(Tag.NOT, updatedGuard).setType(syms.booleanType),
+                                                                            make.Block(0, List.of(make.Exec(make.Assign(make.Ident(index),
+                                                                                                  makeLit(syms.intType, i + 1)).setType(syms.intType)), continueSwitch)),
+                                                                            null))));
+                }
             }
             ListBuffer<JCPattern> translatedLabels = new ListBuffer<>();
             for (var p : c.pats) {
@@ -576,5 +607,15 @@ public class TransPatterns extends TreeTranslator {
             return null;
         }
 
+    }
+
+    /** Make an attributed tree representing a literal. This will be an
+     *  Ident node in the case of boolean literals, a Literal node in all
+     *  other cases.
+     *  @param type       The literal's type.
+     *  @param value      The literal's value.
+     */
+    JCExpression makeLit(Type type, Object value) {
+        return make.Literal(type.getTag(), value).setType(type.constType(value));
     }
 }

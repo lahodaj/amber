@@ -1432,7 +1432,7 @@ public class JavacParser implements Parser {
                 JCExpression e = term(EXPR | TYPE | NOLAMBDA);
                 JCPattern p;
                 if (token.kind == IDENTIFIER) {
-                    p = toP(F.at(token.pos).BindingPattern(ident(), e));
+                    p = parseBindingPatternWithGuard(e);
                 } else {
                     p = toP(F.at(e).ExpressionPattern(e));
                 }
@@ -2912,7 +2912,7 @@ public class JavacParser implements Parser {
                 JCExpression e = term(EXPR | TYPE | NOLAMBDA);
                 JCPattern p;
                 if (token.kind == IDENTIFIER) {
-                    p = toP(F.at(token.pos).BindingPattern(ident(), e));
+                    p = parseBindingPatternWithGuard(e);
                 } else {
                     p = toP(F.at(e).ExpressionPattern(e));
                 }
@@ -2969,6 +2969,15 @@ public class JavacParser implements Parser {
         }
         }
         throw new AssertionError("should not reach here");
+    }
+
+    private JCBindingPattern parseBindingPatternWithGuard(JCExpression type) {
+        JCBindingPattern currentPattern = toP(F.at(token.pos).BindingPattern(ident(), type));
+        if (token.kind == AMPAMP) {
+            nextToken();
+            currentPattern.guard = parseExpression();
+        }
+        return currentPattern;
     }
 
     /** MoreStatementExpressions = { COMMA StatementExpression }

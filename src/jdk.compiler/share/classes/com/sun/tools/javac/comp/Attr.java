@@ -3947,6 +3947,14 @@ public class Attr extends JCTree.Visitor {
         annotate.flush();
         result = tree.type;
         matchBindings = new MatchBindings(List.of(tree.symbol), List.nil());
+        if (tree.guard != null) {
+            Env<AttrContext> guardEnv = bindingEnv(env, matchBindings.bindingsWhenTrue);
+            try {
+                attribExpr(tree.guard, guardEnv, syms.booleanType);
+            } finally {
+                guardEnv.info.scope.leave();
+            }
+        }
     }
 
     public void visitExpressionPattern(JCExpressionPattern tree) {

@@ -2192,6 +2192,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public Name name;
         public BindingSymbol symbol;
         public JCTree vartype;
+        public JCExpression guard;
 
         protected JCBindingPattern(Name name, BindingSymbol symbol, JCTree vartype) {
             this.name = name;
