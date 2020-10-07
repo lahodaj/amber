@@ -22,6 +22,7 @@
  */
 
 #include "precompiled.hpp"
+#include "gc/shared/gcLogPrecious.hpp"
 #include "gc/z/zLock.inline.hpp"
 #include "gc/z/zMarkStack.inline.hpp"
 #include "gc/z/zMarkStackAllocator.hpp"
@@ -41,10 +42,9 @@ ZMarkStackSpace::ZMarkStackSpace() :
 
   // Reserve address space
   const size_t size = ZMarkStackSpaceLimit;
-  const size_t alignment = (size_t)os::vm_allocation_granularity();
-  const uintptr_t addr = (uintptr_t)os::reserve_memory(size, NULL, alignment, mtGC);
+  const uintptr_t addr = (uintptr_t)os::reserve_memory(size, mtGC);
   if (addr == 0) {
-    log_error(gc, marking)("Failed to reserve address space for mark stacks");
+    log_error_pd(gc, marking)("Failed to reserve address space for mark stacks");
     return;
   }
 

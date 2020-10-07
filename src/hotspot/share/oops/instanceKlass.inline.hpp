@@ -26,6 +26,7 @@
 #define SHARE_OOPS_INSTANCEKLASS_INLINE_HPP
 
 #include "memory/iterator.hpp"
+#include "memory/resourceArea.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.hpp"
 #include "oops/oop.inline.hpp"
@@ -56,7 +57,7 @@ inline void InstanceKlass::release_set_methods_jmethod_ids(jmethodID* jmeths) {
 
 template <typename T, class OopClosureType>
 ALWAYSINLINE void InstanceKlass::oop_oop_iterate_oop_map(OopMapBlock* map, oop obj, OopClosureType* closure) {
-  T* p         = (T*)obj->obj_field_addr_raw<T>(map->offset());
+  T* p         = (T*)obj->obj_field_addr<T>(map->offset());
   T* const end = p + map->count();
 
   for (; p < end; ++p) {
@@ -66,7 +67,7 @@ ALWAYSINLINE void InstanceKlass::oop_oop_iterate_oop_map(OopMapBlock* map, oop o
 
 template <typename T, class OopClosureType>
 ALWAYSINLINE void InstanceKlass::oop_oop_iterate_oop_map_reverse(OopMapBlock* map, oop obj, OopClosureType* closure) {
-  T* const start = (T*)obj->obj_field_addr_raw<T>(map->offset());
+  T* const start = (T*)obj->obj_field_addr<T>(map->offset());
   T*       p     = start + map->count();
 
   while (start < p) {
@@ -77,7 +78,7 @@ ALWAYSINLINE void InstanceKlass::oop_oop_iterate_oop_map_reverse(OopMapBlock* ma
 
 template <typename T, class OopClosureType>
 ALWAYSINLINE void InstanceKlass::oop_oop_iterate_oop_map_bounded(OopMapBlock* map, oop obj, OopClosureType* closure, MemRegion mr) {
-  T* p   = (T*)obj->obj_field_addr_raw<T>(map->offset());
+  T* p   = (T*)obj->obj_field_addr<T>(map->offset());
   T* end = p + map->count();
 
   T* const l   = (T*)mr.start();
@@ -155,6 +156,18 @@ ALWAYSINLINE void InstanceKlass::oop_oop_iterate_bounded(oop obj, OopClosureType
   }
 
   oop_oop_iterate_oop_maps_bounded<T>(obj, closure, mr);
+}
+
+inline instanceOop InstanceKlass::allocate_instance(oop java_class, TRAPS) {
+  Klass* k = java_lang_Class::as_Klass(java_class);
+  if (k == NULL) {
+    ResourceMark rm(THREAD);
+    THROW_(vmSymbols::java_lang_InstantiationException(), NULL);
+  }
+  InstanceKlass* ik = cast(k);
+  ik->check_valid_for_instantiation(false, CHECK_NULL);
+  ik->initialize(CHECK_NULL);
+  return ik->allocate_instance(THREAD);
 }
 
 #endif // SHARE_OOPS_INSTANCEKLASS_INLINE_HPP

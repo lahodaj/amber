@@ -77,6 +77,7 @@ final class HotSpotResolvedObjectTypeImpl extends HotSpotResolvedJavaType implem
     private HotSpotConstantPool constantPool;
     private final JavaConstant mirror;
     private HotSpotResolvedObjectTypeImpl superClass;
+    private HotSpotResolvedJavaType componentType;
 
     /**
      * Managed exclusively by {@link HotSpotJDKReflection#getField}.
@@ -157,7 +158,14 @@ final class HotSpotResolvedObjectTypeImpl extends HotSpotResolvedJavaType implem
 
     @Override
     public ResolvedJavaType getComponentType() {
-        return runtime().compilerToVm.getComponentType(this);
+        if (componentType == null) {
+            if (isArray()) {
+                componentType = runtime().compilerToVm.getComponentType(this);
+            } else {
+                componentType = this;
+            }
+        }
+        return this.equals(componentType) ? null : componentType;
     }
 
     @Override
@@ -298,12 +306,12 @@ final class HotSpotResolvedObjectTypeImpl extends HotSpotResolvedJavaType implem
 
     @Override
     public HotSpotResolvedObjectTypeImpl getSupertype() {
-        if (isArray()) {
-            ResolvedJavaType componentType = getComponentType();
-            if (componentType.equals(getJavaLangObject()) || componentType.isPrimitive()) {
+        ResolvedJavaType component = getComponentType();
+        if (component != null) {
+            if (component.equals(getJavaLangObject()) || component.isPrimitive()) {
                 return getJavaLangObject();
             }
-            HotSpotResolvedObjectTypeImpl supertype = ((HotSpotResolvedObjectTypeImpl) componentType).getSupertype();
+            HotSpotResolvedObjectTypeImpl supertype = ((HotSpotResolvedObjectTypeImpl) component).getSupertype();
             return (HotSpotResolvedObjectTypeImpl) supertype.getArrayClass();
         }
         if (isInterface()) {
@@ -370,6 +378,27 @@ final class HotSpotResolvedObjectTypeImpl extends HotSpotResolvedJavaType implem
     @Override
     public boolean isLinked() {
         return isArray() ? true : getInitState() >= config().instanceKlassStateLinked;
+    }
+
+    @Override
+    public void link() {
+        if (!isLinked()) {
+            runtime().compilerToVm.ensureLinked(this);
+        }
+    }
+
+    @Override
+    public boolean hasDefaultMethods() {
+        HotSpotVMConfig config = config();
+        int miscFlags = UNSAFE.getChar(getMetaspaceKlass() + config.instanceKlassMiscFlagsOffset);
+        return (miscFlags & config.jvmMiscFlagsHasDefaultMethods) != 0;
+    }
+
+    @Override
+    public boolean declaresDefaultMethods() {
+        HotSpotVMConfig config = config();
+        int miscFlags = UNSAFE.getChar(getMetaspaceKlass() + config.instanceKlassMiscFlagsOffset);
+        return (miscFlags & config.jvmMiscFlagsDeclaresDefaultMethods) != 0;
     }
 
     /**
@@ -449,6 +478,11 @@ final class HotSpotResolvedObjectTypeImpl extends HotSpotResolvedJavaType implem
         }
         if (!method.getDeclaringClass().isAssignableFrom(this)) {
             return null;
+        }
+        if (method.isConstructor()) {
+            // Constructor calls should have been checked in the verifier and method's
+            // declaring class is assignable from this (see above) so treat it as resolved.
+            return method;
         }
         HotSpotResolvedJavaMethodImpl hotSpotMethod = (HotSpotResolvedJavaMethodImpl) method;
         HotSpotResolvedObjectTypeImpl hotSpotCallerType = (HotSpotResolvedObjectTypeImpl) callerType;
@@ -818,7 +852,7 @@ final class HotSpotResolvedObjectTypeImpl extends HotSpotResolvedJavaType implem
     @Override
     public String getSourceFileName() {
         if (isArray()) {
-            throw new JVMCIError("Cannot call getSourceFileName() on an array klass type: %s", this);
+            return null;
         }
         return getConstantPool().getSourceFileName();
     }

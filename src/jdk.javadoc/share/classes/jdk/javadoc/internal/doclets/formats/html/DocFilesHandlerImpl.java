@@ -29,7 +29,6 @@ import com.sun.source.doctree.DocTree;
 import com.sun.source.doctree.EndElementTree;
 import com.sun.source.doctree.StartElementTree;
 import com.sun.source.util.DocTreeFactory;
-import com.sun.tools.doclint.HtmlTag;
 import jdk.javadoc.internal.doclets.formats.html.markup.BodyContents;
 import jdk.javadoc.internal.doclets.formats.html.markup.ContentBuilder;
 import jdk.javadoc.internal.doclets.formats.html.markup.HtmlTree;
@@ -42,6 +41,7 @@ import jdk.javadoc.internal.doclets.toolkit.util.DocPath;
 import jdk.javadoc.internal.doclets.toolkit.util.DocPaths;
 import jdk.javadoc.internal.doclets.toolkit.util.DocletConstants;
 import jdk.javadoc.internal.doclets.toolkit.util.Utils;
+import jdk.javadoc.internal.doclint.HtmlTag;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ModuleElement;
@@ -49,6 +49,8 @@ import javax.lang.model.element.PackageElement;
 import javax.tools.FileObject;
 import javax.tools.JavaFileManager.Location;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -145,6 +147,15 @@ public class DocFilesHandlerImpl implements DocFilesHandler {
             return;
         }
         for (DocFile srcfile: srcdir.list()) {
+            // ensure that the name is a valid component in an eventual full path
+            // and so avoid an equivalent check lower down in the file manager
+            // that throws IllegalArgumentException
+            if (!isValidFilename(srcfile)) {
+                configuration.messages.warning("doclet.Copy_Ignored_warning",
+                        srcfile.getPath());
+                continue;
+            }
+
             DocFile destfile = dstdir.resolve(srcfile.getName());
             if (srcfile.isFile()) {
                 if (destfile.exists() && !first) {
@@ -166,6 +177,16 @@ public class DocFilesHandlerImpl implements DocFilesHandler {
                     copyDirectory(srcfile, dirDocPath, first);
                 }
             }
+        }
+    }
+
+    private boolean isValidFilename(DocFile f) {
+        try {
+            String n = f.getName();
+            URI u = new URI(n);
+            return u.getPath().equals(n);
+        } catch (URISyntaxException e) {
+            return false;
         }
     }
 

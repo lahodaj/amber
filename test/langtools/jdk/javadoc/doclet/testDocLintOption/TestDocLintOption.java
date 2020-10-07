@@ -26,7 +26,7 @@
  * @bug     8236949 8238259
  * @summary javadoc -Xdoclint does not accumulate options correctly
  * @library /tools/lib ../../lib
- * @modules jdk.compiler/com.sun.tools.doclint
+ * @modules jdk.javadoc/jdk.javadoc.internal.doclint
  *          jdk.javadoc/jdk.javadoc.internal.tool
  * @build   toolbox.ToolBox javadoc.tester.*
  * @run main TestDocLintOption
@@ -40,8 +40,8 @@ import java.util.Set;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import com.sun.tools.doclint.Messages.Group;
-import static com.sun.tools.doclint.Messages.Group.*;
+import jdk.javadoc.internal.doclint.Messages.Group;
+import static jdk.javadoc.internal.doclint.Messages.Group.*;
 
 import javadoc.tester.JavadocTester;
 import toolbox.ToolBox;
@@ -143,7 +143,8 @@ public class TestDocLintOption extends JavadocTester {
         checkExit(expectExit);
 
         checkOutput(Output.OUT, expectGroups.contains(ACCESSIBILITY),
-                "C.java:4: error: no \"alt\" attribute for image");
+                """
+                    C.java:4: error: no "alt" attribute for image""");
 
         checkOutput(Output.OUT, expectGroups.contains(HTML),
                 "C.java:8: error: text not allowed in <ul> element");
@@ -167,28 +168,39 @@ public class TestDocLintOption extends JavadocTester {
     private void generateSrc() throws IOException {
         Path src = Path.of("src");
         tb.writeJavaFiles(src,
-                  "package p;\n"
-                + "public class C {\n"
-                + "  /** Comment.\n"
-                + "   *  <img src=\"foo.png\">\n"       // "accessibility"" no alt attribute
-                + "   */\n"
-                + "  public void mAccessibility() { }\n"
-                + "  /** Comment.\n"
-                + "   *  <ul>123</ul>\n"                // "HTML": text not allowed
-                + "   */\n"
-                + "  public void mHtml() { }\n"
-                + "  /** Comment.\n"
-                + "   */\n"                             // "missing": no @return
-                + "  public int mMissing() { }\n"
-                + "  /** Comment.\n"
-                + "   *  @return error\n"               // "reference": invalid @return
-                + "   */\n"
-                + "  public void mReference() { }\n"
-                + "  /** Comment.\n"
-                + "   *  a & b\n"                       // "syntax": bad use of &
-                + "   */\n"
-                + "  public void mSyntax() { }\n"
-                + "}");
+                  """
+                      package p;
+                      public class C {
+                        /** Comment.
+                         *  <img src="foo.png">
+                      """       // "accessibility"" no alt attribute
+                + """
+                    \s  */
+                      public void mAccessibility() { }
+                      /** Comment.
+                       *  <ul>123</ul>
+                    """                // "HTML": text not allowed
+                + """
+                    \s  */
+                      public void mHtml() { }
+                      /** Comment.
+                       */
+                    """                             // "missing": no @return
+                + """
+                    \s public int mMissing() { }
+                      /** Comment.
+                       *  @return error
+                    """               // "reference": invalid @return
+                + """
+                    \s  */
+                      public void mReference() { }
+                      /** Comment.
+                       *  a & b
+                    """                       // "syntax": bad use of &
+                + """
+                       */
+                      public void mSyntax() { }
+                    }""");
     }
 }
 

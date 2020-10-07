@@ -256,6 +256,19 @@ class Address {
              "inconsistent address");
   }
 
+  // The following overloads are used in connection with the
+  // ByteSize type (see sizes.hpp).  They simplify the use of
+  // ByteSize'd arguments in assembly code.
+
+  Address(Register base, ByteSize disp)
+    : Address(base, in_bytes(disp)) {}
+
+  Address(Register base, Register index, ScaleFactor scale, ByteSize disp)
+    : Address(base, index, scale, in_bytes(disp)) {}
+
+  Address(Register base, RegisterOrConstant index, ScaleFactor scale, ByteSize disp)
+    : Address(base, index, scale, in_bytes(disp)) {}
+
   Address plus_disp(int disp) const {
     Address a = (*this);
     a._disp += disp;
@@ -275,51 +288,6 @@ class Address {
     // disregard _rspec
     return _base == a._base && _disp == a._disp && _index == a._index && _scale == a._scale;
   }
-
-  // The following two overloads are used in connection with the
-  // ByteSize type (see sizes.hpp).  They simplify the use of
-  // ByteSize'd arguments in assembly code. Note that their equivalent
-  // for the optimized build are the member functions with int disp
-  // argument since ByteSize is mapped to an int type in that case.
-  //
-  // Note: DO NOT introduce similar overloaded functions for WordSize
-  // arguments as in the optimized mode, both ByteSize and WordSize
-  // are mapped to the same type and thus the compiler cannot make a
-  // distinction anymore (=> compiler errors).
-
-#ifdef ASSERT
-  Address(Register base, ByteSize disp)
-    : _base(base),
-      _index(noreg),
-      _xmmindex(xnoreg),
-      _scale(no_scale),
-      _disp(in_bytes(disp)),
-      _isxmmindex(false){
-  }
-
-  Address(Register base, Register index, ScaleFactor scale, ByteSize disp)
-    : _base(base),
-      _index(index),
-      _xmmindex(xnoreg),
-      _scale(scale),
-      _disp(in_bytes(disp)),
-      _isxmmindex(false){
-    assert(!index->is_valid() == (scale == Address::no_scale),
-           "inconsistent address");
-  }
-  Address(Register base, RegisterOrConstant index, ScaleFactor scale, ByteSize disp)
-    : _base (base),
-      _index(index.register_or_noreg()),
-      _xmmindex(xnoreg),
-      _scale(scale),
-      _disp (in_bytes(disp) + (index.constant_or_zero() * scale_size(scale))),
-      _isxmmindex(false) {
-    if (!index.is_register())  scale = Address::no_scale;
-    assert(!_index->is_valid() == (scale == Address::no_scale),
-           "inconsistent address");
-  }
-
-#endif // ASSERT
 
   // accessors
   bool        uses(Register reg) const { return _base == reg || _index == reg; }
@@ -1827,7 +1795,18 @@ private:
 
   void ret(int imm16);
 
+  void roll(Register dst);
+
+  void roll(Register dst, int imm8);
+
+  void rorl(Register dst);
+
+  void rorl(Register dst, int imm8);
+
 #ifdef _LP64
+  void rolq(Register dst);
+  void rolq(Register dst, int imm8);
+  void rorq(Register dst);
   void rorq(Register dst, int imm8);
   void rorxq(Register dst, Register src, int imm8);
   void rorxd(Register dst, Register src, int imm8);
@@ -2201,6 +2180,17 @@ private:
   // Ternary logic instruction.
   void vpternlogd(XMMRegister dst, int imm8, XMMRegister src2, XMMRegister src3, int vector_len);
   void vpternlogd(XMMRegister dst, int imm8, XMMRegister src2, Address     src3, int vector_len);
+  void vpternlogq(XMMRegister dst, int imm8, XMMRegister src2, XMMRegister src3, int vector_len);
+
+  // Vector Rotate Left/Right instruction.
+  void evprolvd(XMMRegister dst, XMMRegister src, XMMRegister shift, int vector_len);
+  void evprolvq(XMMRegister dst, XMMRegister src, XMMRegister shift, int vector_len);
+  void evprorvd(XMMRegister dst, XMMRegister src, XMMRegister shift, int vector_len);
+  void evprorvq(XMMRegister dst, XMMRegister src, XMMRegister shift, int vector_len);
+  void evprold(XMMRegister dst, XMMRegister src, int shift, int vector_len);
+  void evprolq(XMMRegister dst, XMMRegister src, int shift, int vector_len);
+  void evprord(XMMRegister dst, XMMRegister src, int shift, int vector_len);
+  void evprorq(XMMRegister dst, XMMRegister src, int shift, int vector_len);
 
   // vinserti forms
   void vinserti128(XMMRegister dst, XMMRegister nds, XMMRegister src, uint8_t imm8);
@@ -2245,6 +2235,7 @@ private:
   void vpbroadcastq(XMMRegister dst, XMMRegister src, int vector_len);
   void vpbroadcastq(XMMRegister dst, Address src, int vector_len);
 
+  void evbroadcasti32x4(XMMRegister dst, Address src, int vector_len);
   void evbroadcasti64x2(XMMRegister dst, XMMRegister src, int vector_len);
   void evbroadcasti64x2(XMMRegister dst, Address src, int vector_len);
 
@@ -2274,6 +2265,7 @@ private:
   void vzeroupper();
 
   // AVX support for vectorized conditional move (float/double). The following two instructions used only coupled.
+  void blendvpb(XMMRegister dst, XMMRegister nds, XMMRegister src1, XMMRegister src2, int vector_len);
   void cmppd(XMMRegister dst, XMMRegister nds, XMMRegister src, int cop, int vector_len);
   void blendvpd(XMMRegister dst, XMMRegister nds, XMMRegister src1, XMMRegister src2, int vector_len);
   void cmpps(XMMRegister dst, XMMRegister nds, XMMRegister src, int cop, int vector_len);

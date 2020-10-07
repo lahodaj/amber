@@ -22,10 +22,7 @@
  *
  */
 
-import java.io.File;
-import java.nio.file.Paths;
-import java.time.Duration;
-
+import jdk.test.lib.Utils;
 import jdk.test.lib.process.ProcessTools;
 import jdk.test.lib.process.OutputAnalyzer;
 
@@ -42,11 +39,9 @@ import sun.hotspot.WhiteBox;
  */
 
 public class HandshakeTransitionTest {
-
     public static native void someTime(int ms);
 
     public static void main(String[] args) throws Exception {
-        String lib = System.getProperty("test.nativepath");
         WhiteBox wb = WhiteBox.getWhiteBox();
         Boolean useJVMCICompiler = wb.getBooleanVMFlag("UseJVMCICompiler");
         String useJVMCICompilerStr;
@@ -57,9 +52,8 @@ public class HandshakeTransitionTest {
             useJVMCICompilerStr = "-XX:+UnlockExperimentalVMOptions";
         }
         ProcessBuilder pb =
-            ProcessTools.createJavaProcessBuilder(
-                    true,
-                    "-Djava.library.path=" + lib,
+            ProcessTools.createTestJvm(
+                    "-Djava.library.path=" + Utils.TEST_NATIVE_PATH,
                     "-XX:+SafepointALot",
                     "-XX:+HandshakeALot",
                     "-XX:GuaranteedSafepointInterval=20",
@@ -70,7 +64,6 @@ public class HandshakeTransitionTest {
                     "-XX:+UnlockExperimentalVMOptions",
                     useJVMCICompilerStr,
                     "HandshakeTransitionTest$Test");
-
 
         OutputAnalyzer output = ProcessTools.executeProcess(pb);
         output.reportDiagnosticSummary();

@@ -54,27 +54,11 @@ public:
   ~ShenandoahGCSession();
 };
 
-class ShenandoahPausePhase : public StackObj {
-private:
-  GCTraceTimeWrapper<LogLevel::Info, LOG_TAGS(gc)> _tracer;
-  ConcurrentGCTimer* const _timer;
-
-public:
-  ShenandoahPausePhase(const char* title, bool log_heap_usage = false);
-  ~ShenandoahPausePhase();
-};
-
-class ShenandoahConcurrentPhase : public StackObj {
-private:
-  GCTraceTimeWrapper<LogLevel::Info, LOG_TAGS(gc)> _tracer;
-  ConcurrentGCTimer* const _timer;
-
-public:
-  ShenandoahConcurrentPhase(const char* title, bool log_heap_usage = false);
-  ~ShenandoahConcurrentPhase();
-};
-
-class ShenandoahGCPhase : public StackObj {
+/*
+ * ShenandoahGCPhaseTiming tracks Shenandoah specific timing information
+ * of a GC phase
+ */
+class ShenandoahTimingsTracker : public StackObj {
 private:
   static ShenandoahPhaseTimings::Phase  _current_phase;
 
@@ -84,21 +68,53 @@ private:
   double _start;
 
 public:
-  ShenandoahGCPhase(ShenandoahPhaseTimings::Phase phase);
-  ~ShenandoahGCPhase();
+  ShenandoahTimingsTracker(ShenandoahPhaseTimings::Phase phase);
+  ~ShenandoahTimingsTracker();
 
   static ShenandoahPhaseTimings::Phase current_phase() { return _current_phase; }
 
   static bool is_current_phase_valid();
 };
 
-class ShenandoahGCSubPhase: public ShenandoahGCPhase {
+/*
+ * ShenandoahPausePhase tracks a STW pause and emits Shenandoah timing and
+ * a corresponding JFR event
+ */
+class ShenandoahPausePhase : public ShenandoahTimingsTracker {
+private:
+  GCTraceTimeWrapper<LogLevel::Info, LOG_TAGS(gc)> _tracer;
+  ConcurrentGCTimer* const _timer;
+
+public:
+  ShenandoahPausePhase(const char* title, ShenandoahPhaseTimings::Phase phase, bool log_heap_usage = false);
+  ~ShenandoahPausePhase();
+};
+
+/*
+ * ShenandoahConcurrentPhase tracks a concurrent GC phase and emits Shenandoah timing and
+ * a corresponding JFR event
+ */
+class ShenandoahConcurrentPhase : public ShenandoahTimingsTracker {
+private:
+  GCTraceTimeWrapper<LogLevel::Info, LOG_TAGS(gc)> _tracer;
+  ConcurrentGCTimer* const _timer;
+
+public:
+  ShenandoahConcurrentPhase(const char* title, ShenandoahPhaseTimings::Phase phase, bool log_heap_usage = false);
+  ~ShenandoahConcurrentPhase();
+};
+
+/*
+ * ShenandoahGCPhase tracks Shenandoah specific timing information
+ * and emits a corresponding JFR event of a GC phase
+ */
+class ShenandoahGCPhase : public ShenandoahTimingsTracker {
 private:
   ConcurrentGCTimer* const _timer;
 
 public:
-  ShenandoahGCSubPhase(ShenandoahPhaseTimings::Phase phase);
-  ~ShenandoahGCSubPhase();
+  ShenandoahGCPhase(ShenandoahPhaseTimings::Phase phase);
+  ~ShenandoahGCPhase();
 };
 
 class ShenandoahGCWorkerPhase : public StackObj {
@@ -125,10 +141,17 @@ public:
 
 class ShenandoahSafepoint : public AllStatic {
 public:
-  // check if Shenandoah GC safepoint is in progress
+  // Check if Shenandoah GC safepoint is in progress. This is nominally
+  // equivalent to calling SafepointSynchronize::is_at_safepoint(), but
+  // it also checks the Shenandoah specifics, when it can.
   static inline bool is_at_shenandoah_safepoint() {
     if (!SafepointSynchronize::is_at_safepoint()) return false;
 
+    // This is not VM thread, cannot see what VM thread is doing,
+    // so pretend this is a proper Shenandoah safepoint
+    if (!Thread::current()->is_VM_thread()) return true;
+
+    // Otherwise check we are at proper operation type
     VM_Operation* vm_op = VMThread::vm_operation();
     if (vm_op == NULL) return false;
 

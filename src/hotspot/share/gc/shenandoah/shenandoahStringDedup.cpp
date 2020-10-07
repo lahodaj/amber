@@ -98,18 +98,6 @@ void ShenandoahStringDedup::oops_do_slow(OopClosure* cl) {
   StringDedupTable::unlink_or_oops_do(&sd_cl, 0);
 }
 
-class ShenandoahIsMarkedNextClosure : public BoolObjectClosure {
-private:
-  ShenandoahMarkingContext* const _mark_context;
-
-public:
-  ShenandoahIsMarkedNextClosure() : _mark_context(ShenandoahHeap::heap()->marking_context()) { }
-
-  bool do_object_b(oop obj) {
-    return _mark_context->is_marked(obj);
-  }
-};
-
 //
 // Task for parallel unlink_or_oops_do() operation on the deduplication queue
 // and table.
@@ -122,7 +110,7 @@ public:
   ShenandoahStringDedupUnlinkOrOopsDoTask(BoolObjectClosure* is_alive,
                                   OopClosure* keep_alive,
                                   bool allow_resize_and_rehash) :
-    AbstractGangTask("StringDedupUnlinkOrOopsDoTask"),
+    AbstractGangTask("Shenandoah String Dedup Unlink/Process"),
     _cl(is_alive, keep_alive) {
       StringDedup::gc_prologue(allow_resize_and_rehash);
   }

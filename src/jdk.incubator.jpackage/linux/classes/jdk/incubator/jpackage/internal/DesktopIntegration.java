@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,19 +25,37 @@
 package jdk.incubator.jpackage.internal;
 
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-import static jdk.incubator.jpackage.internal.LinuxAppBundler.ICON_PNG;
+import jdk.incubator.jpackage.internal.Arguments.CLIOptions;
 import static jdk.incubator.jpackage.internal.LinuxAppImageBuilder.DEFAULT_ICON;
+import static jdk.incubator.jpackage.internal.LinuxAppImageBuilder.ICON_PNG;
 import static jdk.incubator.jpackage.internal.OverridableResource.createResource;
-import static jdk.incubator.jpackage.internal.StandardBundlerParam.*;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.ADD_LAUNCHERS;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.APP_NAME;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.DESCRIPTION;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.FILE_ASSOCIATIONS;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.ICON;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.PREDEFINED_APP_IMAGE;
 
 /**
  * Helper to create files for desktop integration.
@@ -117,12 +135,32 @@ final class DesktopIntegration {
                 createDataForDesktopFile(params));
 
         nestedIntegrations = new ArrayList<>();
-        for (var launcherParams : launchers) {
-            launcherParams = AddLauncherArguments.merge(params, launcherParams,
+        // Read launchers information from predefine app image
+        if (launchers.isEmpty() &&
+                PREDEFINED_APP_IMAGE.fetchFrom(params) != null) {
+            List<String> launcherPaths = AppImageFile.getLauncherNames(
+                    PREDEFINED_APP_IMAGE.fetchFrom(params), params);
+            if (!launcherPaths.isEmpty()) {
+                launcherPaths.remove(0); // Remove main launcher
+            }
+            for (var launcherPath : launcherPaths) {
+                Map<String, ? super Object> launcherParams = new HashMap<>();
+                Arguments.putUnlessNull(launcherParams, CLIOptions.NAME.getId(),
+                        launcherPath);
+                launcherParams = AddLauncherArguments.merge(params, launcherParams,
                     ICON.getID(), ICON_PNG.getID(), ADD_LAUNCHERS.getID(),
-                    FILE_ASSOCIATIONS.getID());
-            nestedIntegrations.add(new DesktopIntegration(thePackage,
-                    launcherParams, params));
+                    FILE_ASSOCIATIONS.getID(), PREDEFINED_APP_IMAGE.getID());
+                nestedIntegrations.add(new DesktopIntegration(thePackage,
+                        launcherParams, params));
+            }
+        } else {
+            for (var launcherParams : launchers) {
+                launcherParams = AddLauncherArguments.merge(params, launcherParams,
+                        ICON.getID(), ICON_PNG.getID(), ADD_LAUNCHERS.getID(),
+                        FILE_ASSOCIATIONS.getID());
+                nestedIntegrations.add(new DesktopIntegration(thePackage,
+                        launcherParams, params));
+            }
         }
     }
 
@@ -235,9 +273,14 @@ final class DesktopIntegration {
         data.put("APPLICATION_ICON",
                 iconFile != null ? iconFile.installPath().toString() : null);
         data.put("DEPLOY_BUNDLE_CATEGORY", MENU_GROUP.fetchFrom(params));
-        data.put("APPLICATION_LAUNCHER",
-                thePackage.installedApplicationLayout().launchersDirectory().resolve(
-                        LinuxAppImageBuilder.getLauncherName(params)).toString());
+
+        String appLauncher = thePackage.installedApplicationLayout().launchersDirectory().resolve(
+                LinuxAppImageBuilder.getLauncherName(params)).toString();
+        if (Pattern.compile("\\s").matcher(appLauncher).find()) {
+            // Path contains whitespace(s). Enclose in double quotes.
+            appLauncher = "\"" + appLauncher + "\"";
+        }
+        data.put("APPLICATION_LAUNCHER", appLauncher);
 
         return data;
     }
@@ -414,8 +457,8 @@ final class DesktopIntegration {
                         File.separatorChar, '-') + IOUtils.getSuffix(
                                 assoc.data.iconPath));
 
-                IOUtils.copyFile(assoc.data.iconPath.toFile(),
-                        faIconFile.srcPath().toFile());
+                IOUtils.copyFile(assoc.data.iconPath,
+                        faIconFile.srcPath());
 
                 shellCommands.addIcon(mimeType, faIconFile.installPath(),
                         assoc.iconSize);

@@ -216,7 +216,7 @@ int ConstantTable::calculate_table_base_offset() const {
   // flds, fldd: 8-bit  offset multiplied by 4: +/- 1024
   // ldr, ldrb : 12-bit offset:                 +/- 4096
   if (!Assembler::is_simm10(offset)) {
-    offset = Assembler::min_simm10();
+    offset = Assembler::min_simm10;
   }
   return offset;
 }
@@ -997,13 +997,17 @@ const int Matcher::float_pressure(int default_pressure_threshold) {
   return default_pressure_threshold;
 }
 
-int Matcher::regnum_to_fpu_offset(int regnum) {
-  return regnum - 32; // The FP registers are in the second chunk
-}
-
 // Vector width in bytes
 const int Matcher::vector_width_in_bytes(BasicType bt) {
   return MaxVectorSize;
+}
+
+const bool Matcher::supports_scalable_vector() {
+  return false;
+}
+
+const int Matcher::scalable_vector_reg_size(const BasicType bt) {
+  return -1;
 }
 
 // Vector ideal reg corresponding to specified size in bytes
@@ -1656,13 +1660,10 @@ encode %{
 //         the region from SP to FP meets the minimum stack alignment.
 
 frame %{
-  // What direction does stack grow in (assumed to be same for native & Java)
-  stack_direction(TOWARDS_LOW);
-
   // These two registers define part of the calling convention
   // between compiled code and the interpreter.
   inline_cache_reg(R_Ricklass);          // Inline Cache Register or Method* for I2C
-  interpreter_method_oop_reg(R_Rmethod); // Method Oop Register when calling interpreter
+  interpreter_method_reg(R_Rmethod);     // Method Register when calling interpreter
 
   // Optional: name the operand used by cisc-spilling to access [stack_pointer + offset]
   cisc_spilling_operand_name(indOffset);
@@ -2522,7 +2523,7 @@ operand inline_cache_regP(iRegP reg) %{
   interface(REG_INTER);
 %}
 
-operand interpreter_method_oop_regP(iRegP reg) %{
+operand interpreter_method_regP(iRegP reg) %{
   constraint(ALLOC_IN_RC(Rmethod_regP));
   match(reg);
   format %{ %}
@@ -8869,12 +8870,12 @@ instruct CallLeafNoFPDirect(method meth) %{
 // Also known as an 'interprocedural jump'.
 // Target of jump will eventually return to caller.
 // TailJump below removes the return address.
-instruct TailCalljmpInd(IPRegP jump_target, inline_cache_regP method_oop) %{
-  match(TailCall jump_target method_oop );
+instruct TailCalljmpInd(IPRegP jump_target, inline_cache_regP method_ptr) %{
+  match(TailCall jump_target method_ptr);
 
   ins_cost(CALL_COST);
   format %{ "MOV    Rexception_pc, LR\n\t"
-            "jump   $jump_target  \t! $method_oop holds method oop" %}
+            "jump   $jump_target  \t! $method_ptr holds method" %}
   ins_encode %{
     __ mov(Rexception_pc, LR);   // this is used only to call
                                  // StubRoutines::forward_exception_entry()
@@ -8959,11 +8960,12 @@ instruct ShouldNotReachHere( )
   match(Halt);
   ins_cost(CALL_COST);
 
-  size(4);
   // Use the following format syntax
   format %{ "ShouldNotReachHere" %}
   ins_encode %{
-    __ udf(0xdead);
+    if (is_reachable()) {
+      __ stop(_halt_reason);
+    }
   %}
   ins_pipe(tail_call);
 %}

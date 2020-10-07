@@ -140,7 +140,6 @@ module java.base {
         java.security.sasl;
     exports jdk.internal to
         java.compiler,
-        jdk.jfr,
         jdk.compiler,
         jdk.jshell;
     exports jdk.internal.access to
@@ -149,6 +148,7 @@ module java.base {
         java.management,
         java.naming,
         java.rmi,
+        jdk.jartool,
         jdk.jlink,
         jdk.net,
         jdk.incubator.foreign;
@@ -192,7 +192,6 @@ module java.base {
         java.net.http,
         java.rmi,
         java.security.jgss,
-        java.xml,
         jdk.attach,
         jdk.charsets,
         jdk.compiler,
@@ -229,7 +228,11 @@ module java.base {
         jdk.management.agent;
     exports jdk.internal.vm.annotation to
         jdk.internal.vm.ci,
+        jdk.incubator.foreign,
+        jdk.jfr,
         jdk.unsupported;
+    exports jdk.internal.util to
+            jdk.incubator.foreign;
     exports jdk.internal.util.jar to
         jdk.jartool;
     exports jdk.internal.util.xml to
@@ -294,6 +297,7 @@ module java.base {
         java.rmi,
         java.security.jgss,
         jdk.crypto.cryptoki,
+        jdk.crypto.ec,
         jdk.security.auth;
     exports sun.security.provider.certpath to
         java.naming;

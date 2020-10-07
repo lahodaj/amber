@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -104,6 +104,10 @@ public class ClassReader {
     /** Switch: allow modules.
      */
     boolean allowModules;
+
+    /** Switch: allow sealed
+     */
+    boolean allowSealedTypes;
 
     /** Switch: allow records
      */
@@ -270,6 +274,8 @@ public class ClassReader {
         allowModules     = Feature.MODULES.allowedInSource(source);
         allowRecords = (!preview.isPreview(Feature.RECORDS) || preview.isEnabled()) &&
                 Feature.RECORDS.allowedInSource(source);
+        allowSealedTypes = (!preview.isPreview(Feature.SEALED_CLASSES) || preview.isEnabled()) &&
+                Feature.SEALED_CLASSES.allowedInSource(source);
 
         saveParameterNames = options.isSet(PARAMETERS);
 
@@ -1202,7 +1208,23 @@ public class ClassReader {
                     }
                     bp = bp + attrLen;
                 }
-            }
+            },
+            new AttributeReader(names.PermittedSubclasses, V59, CLASS_ATTRIBUTE) {
+                @Override
+                protected boolean accepts(AttributeKind kind) {
+                    return super.accepts(kind) && allowSealedTypes;
+                }
+                protected void read(Symbol sym, int attrLen) {
+                    if (sym.kind == TYP) {
+                        ListBuffer<Symbol> subtypes = new ListBuffer<>();
+                        int numberOfPermittedSubtypes = nextChar();
+                        for (int i = 0; i < numberOfPermittedSubtypes; i++) {
+                            subtypes.add(poolReader.getClass(nextChar()));
+                        }
+                        ((ClassSymbol)sym).permitted = subtypes.toList();
+                    }
+                }
+            },
         };
 
         for (AttributeReader r: readers)
@@ -1407,6 +1429,9 @@ public class ClassReader {
                         }
                     }
                 }
+            } else if (proxy.type.tsym.flatName() == syms.previewFeatureInternalType.tsym.flatName()) {
+                sym.flags_field |= PREVIEW_API;
+                setFlagIfAttributeTrue(proxy, sym, names.essentialAPI, PREVIEW_ESSENTIAL_API);
             } else {
                 if (proxy.type.tsym == syms.annotationTargetType.tsym) {
                     target = proxy;
@@ -2189,6 +2214,7 @@ public class ClassReader {
                                    Integer.toString(minorVersion));
             }
         }
+        validateMethodType(name, type);
         if (name == names.init && currentOwner.hasOuterInstance()) {
             // Sometimes anonymous classes don't have an outer
             // instance, however, there is no reliable way to tell so
@@ -2216,6 +2242,7 @@ public class ClassReader {
         } finally {
             currentOwner = prevOwner;
         }
+        validateMethodType(name, m.type);
         setParameters(m, type);
 
         if ((flags & VARARGS) != 0) {
@@ -2227,6 +2254,13 @@ public class ClassReader {
         }
 
         return m;
+    }
+
+    void validateMethodType(Name name, Type t) {
+        if ((!t.hasTag(TypeTag.METHOD) && !t.hasTag(TypeTag.FORALL)) ||
+            (name == names.init && !t.getReturnType().hasTag(TypeTag.VOID))) {
+            throw badClassFile("method.descriptor.invalid", name);
+        }
     }
 
     private List<Type> adjustMethodParams(long flags, List<Type> args) {
@@ -2453,6 +2487,9 @@ public class ClassReader {
                         Integer.toString(minorVersion));
             }
             c.flags_field = flags;
+            if (c.owner.kind != MDL) {
+                throw badClassFile("module.info.definition.expected");
+            }
             currentModule = (ModuleSymbol) c.owner;
             int this_class = nextChar();
             // temp, no check on this_class
@@ -2469,6 +2506,10 @@ public class ClassReader {
         char methodCount = nextChar();
         for (int i = 0; i < methodCount; i++) skipMember();
         readClassAttrs(c);
+
+        if (c.permitted != null && !c.permitted.isEmpty()) {
+            c.flags_field |= SEALED;
+        }
 
         // reset and read rest of classinfo
         bp = startbp;

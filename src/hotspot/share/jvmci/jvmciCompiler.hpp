@@ -42,6 +42,10 @@ private:
    */
   volatile int _methods_compiled;
 
+  // Incremented periodically by JVMCI compiler threads
+  // to indicate JVMCI compilation activity.
+  volatile int _global_compilation_ticks;
+
   static JVMCICompiler* _instance;
 
   static elapsedTimer _codeInstallTimer;
@@ -94,20 +98,21 @@ public:
   }
 
   // Compilation entry point for methods
-  virtual void compile_method(ciEnv* env, ciMethod* target, int entry_bci, DirectiveSet* directive);
+  virtual void compile_method(ciEnv* env, ciMethod* target, int entry_bci, bool install_code, DirectiveSet* directive);
 
   // Print compilation timers and statistics
   virtual void print_timers();
 
-  /**
-   * Gets the number of methods that have been successfully compiled by
-   * a call to JVMCICompiler::compile_method().
-   */
+  // Gets the number of methods that have been successfully compiled by
+  // a call to JVMCICompiler::compile_method().
   int methods_compiled() { return _methods_compiled; }
+  void inc_methods_compiled();
 
-  void inc_methods_compiled() {
-    Atomic::inc(&_methods_compiled);
-  }
+  // Gets a value indicating JVMCI compilation activity on any thread.
+  // If successive calls to this method return a different value, then
+  // some degree of JVMCI compilation occurred between the calls.
+  int global_compilation_ticks() const { return _global_compilation_ticks; }
+  void inc_global_compilation_ticks();
 
   // Print compilation timers and statistics
   static void print_compilation_timers();

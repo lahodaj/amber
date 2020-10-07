@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -24,11 +24,13 @@
  */
 package jdk.incubator.jpackage.internal;
 
-import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.nio.file.NoSuchFileException;
+import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -41,7 +43,9 @@ import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
-import static jdk.incubator.jpackage.internal.StandardBundlerParam.*;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.VERSION;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.ADD_LAUNCHERS;
+import static jdk.incubator.jpackage.internal.StandardBundlerParam.APP_NAME;
 
 public class AppImageFile {
 
@@ -95,7 +99,10 @@ public class AppImageFile {
      * @param appImageDir - path to application image
      */
     public static Path getPathInAppImage(Path appImageDir) {
-        return appImageDir.resolve(FILENAME);
+        return ApplicationLayout.platformAppImage()
+                .resolveAt(appImageDir)
+                .appDirectory()
+                .resolve(FILENAME);
     }
 
     /**
@@ -109,6 +116,10 @@ public class AppImageFile {
             xml.writeStartElement("jpackage-state");
             xml.writeAttribute("version", getVersion());
             xml.writeAttribute("platform", getPlatform());
+
+            xml.writeStartElement("app-version");
+            xml.writeCharacters(VERSION.fetchFrom(params));
+            xml.writeEndElement();
 
             xml.writeStartElement("main-launcher");
             xml.writeCharacters(APP_NAME.fetchFrom(params));
@@ -134,14 +145,7 @@ public class AppImageFile {
      */
     static AppImageFile load(Path appImageDir) throws IOException {
         try {
-            Path path = getPathInAppImage(appImageDir);
-            DocumentBuilderFactory dbf =
-                    DocumentBuilderFactory.newDefaultInstance();
-            dbf.setFeature(
-                   "http://apache.org/xml/features/nonvalidating/load-external-dtd",
-                    false);
-            DocumentBuilder b = dbf.newDocumentBuilder();
-            Document doc = b.parse(new FileInputStream(path.toFile()));
+            Document doc = readXml(appImageDir);
 
             XPath xPath = XPathFactory.newInstance().newXPath();
 
@@ -152,7 +156,7 @@ public class AppImageFile {
                 return new AppImageFile();
             }
 
-            List<String> addLaunchers = new ArrayList<String>();
+            List<String> addLaunchers = new ArrayList<>();
 
             String platform = xpathQueryNullable(xPath,
                     "/jpackage-state/@platform", doc);
@@ -174,12 +178,26 @@ public class AppImageFile {
                 file = new AppImageFile();
             }
             return file;
-        } catch (ParserConfigurationException | SAXException ex) {
-            // Let caller sort this out
-            throw new IOException(ex);
         } catch (XPathExpressionException ex) {
             // This should never happen as XPath expressions should be correct
             throw new RuntimeException(ex);
+        }
+    }
+
+    public static Document readXml(Path appImageDir) throws IOException {
+        try {
+            Path path = getPathInAppImage(appImageDir);
+
+            DocumentBuilderFactory dbf =
+                    DocumentBuilderFactory.newDefaultInstance();
+            dbf.setFeature(
+                   "http://apache.org/xml/features/nonvalidating/load-external-dtd",
+                    false);
+            DocumentBuilder b = dbf.newDocumentBuilder();
+            return b.parse(Files.newInputStream(path));
+        } catch (ParserConfigurationException | SAXException ex) {
+            // Let caller sort this out
+            throw new IOException(ex);
         }
     }
 
@@ -198,8 +216,15 @@ public class AppImageFile {
                 launchers.addAll(appImageInfo.getAddLauncherNames());
                 return launchers;
             }
+        } catch (NoSuchFileException nsfe) {
+            // non jpackage generated app-image (no app/.jpackage.xml)
+            Log.info(MessageFormat.format(I18N.getString(
+                    "warning.foreign-app-image"), appImageDir));
         } catch (IOException ioe) {
             Log.verbose(ioe);
+            Log.info(MessageFormat.format(I18N.getString(
+                    "warning.invalid-app-image"), appImageDir));
+
         }
 
         launchers.add(APP_NAME.fetchFrom(params));

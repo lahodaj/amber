@@ -37,6 +37,7 @@ import java.io.UnsupportedEncodingException;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
+import java.lang.invoke.StringConcatFactory;
 import java.lang.module.ModuleDescriptor;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
@@ -62,12 +63,12 @@ import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
+import jdk.internal.misc.Unsafe;
 import jdk.internal.util.StaticProperty;
 import jdk.internal.module.ModuleBootstrap;
 import jdk.internal.module.ServicesCatalog;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
-import jdk.internal.HotSpotIntrinsicCandidate;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.misc.VM;
@@ -75,6 +76,7 @@ import jdk.internal.logger.LoggerFinderLoader;
 import jdk.internal.logger.LazyLoggers;
 import jdk.internal.logger.LocalizedLoggerWrapper;
 import jdk.internal.util.SystemProps;
+import jdk.internal.vm.annotation.IntrinsicCandidate;
 import jdk.internal.vm.annotation.Stable;
 import sun.nio.fs.DefaultFileSystemProvider;
 import sun.reflect.annotation.AnnotationType;
@@ -425,7 +427,7 @@ public final class System {
      *          the current time and midnight, January 1, 1970 UTC.
      * @see     java.util.Date
      */
-    @HotSpotIntrinsicCandidate
+    @IntrinsicCandidate
     public static native long currentTimeMillis();
 
     /**
@@ -469,7 +471,7 @@ public final class System {
      *         high-resolution time source, in nanoseconds
      * @since 1.5
      */
-    @HotSpotIntrinsicCandidate
+    @IntrinsicCandidate
     public static native long nanoTime();
 
     /**
@@ -564,7 +566,7 @@ public final class System {
      * @throws     NullPointerException if either {@code src} or
      *             {@code dest} is {@code null}.
      */
-    @HotSpotIntrinsicCandidate
+    @IntrinsicCandidate
     public static native void arraycopy(Object src,  int  srcPos,
                                         Object dest, int destPos,
                                         int length);
@@ -582,7 +584,7 @@ public final class System {
      * @see Object#hashCode
      * @see java.util.Objects#hashCode(Object)
      */
-    @HotSpotIntrinsicCandidate
+    @IntrinsicCandidate
     public static native int identityHashCode(Object x);
 
     /**
@@ -2049,6 +2051,7 @@ public final class System {
      * @return JNI_OK for success, JNI_ERR for failure
      */
     private static int initPhase2(boolean printToStderr, boolean printStackTrace) {
+
         try {
             bootLayer = ModuleBootstrap.boot();
         } catch (Exception | Error e) {
@@ -2065,15 +2068,23 @@ public final class System {
 
     /*
      * Invoked by VM.  Phase 3 is the final system initialization:
-     * 1. set security manager
-     * 2. set system class loader
-     * 3. set TCCL
+     * 1. eagerly initialize bootstrap method factories that might interact
+     *    negatively with custom security managers and custom class loaders
+     * 2. set security manager
+     * 3. set system class loader
+     * 4. set TCCL
      *
      * This method must be called after the module system initialization.
      * The security manager and system class loader may be a custom class from
      * the application classpath or modulepath.
      */
     private static void initPhase3() {
+
+        // Initialize the StringConcatFactory eagerly to avoid potential
+        // bootstrap circularity issues that could be caused by a custom
+        // SecurityManager
+        Unsafe.getUnsafe().ensureClassInitialized(StringConcatFactory.class);
+
         String smProp = System.getProperty("java.security.manager");
         if (smProp != null) {
             switch (smProp) {
@@ -2237,6 +2248,9 @@ public final class System {
             public ServicesCatalog getServicesCatalog(ModuleLayer layer) {
                 return layer.getServicesCatalog();
             }
+            public void bindToLoader(ModuleLayer layer, ClassLoader loader) {
+                layer.bindToLoader(loader);
+            }
             public Stream<ModuleLayer> layers(ModuleLayer layer) {
                 return layer.layers();
             }
@@ -2270,6 +2284,14 @@ public final class System {
 
             public MethodHandle stringConcatHelper(String name, MethodType methodType) {
                 return StringConcatHelper.lookupStatic(name, methodType);
+            }
+
+            public long stringConcatInitialCoder() {
+                return StringConcatHelper.initialCoder();
+            }
+
+            public long stringConcatMix(long lengthCoder, String constant) {
+                return StringConcatHelper.mix(lengthCoder, constant);
             }
 
             public Object classData(Class<?> c) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,6 +28,7 @@
  * @modules java.base/jdk.internal.misc
  * @modules java.instrument
  *          jdk.jartool/sun.tools.jar
+ * @requires vm.jvmti
  * @compile --enable-preview -source ${jdk.version} RedefineRecord.java
  * @run main/othervm --enable-preview RedefineRecord buildagent
  * @run main/othervm/timeout=6000 --enable-preview RedefineRecord runtest
@@ -103,6 +104,7 @@ public class RedefineRecord {
                 "RedefineRecord");
             OutputAnalyzer output = new OutputAnalyzer(pb.start());
             output.shouldNotContain("processing of -javaagent failed");
+            output.shouldHaveExitValue(0);
         }
     }
 }

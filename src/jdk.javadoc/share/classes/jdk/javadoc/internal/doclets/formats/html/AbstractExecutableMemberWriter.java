@@ -51,6 +51,7 @@ import static jdk.javadoc.internal.doclets.formats.html.LinkInfoImpl.Kind.EXECUT
 import static jdk.javadoc.internal.doclets.formats.html.LinkInfoImpl.Kind.MEMBER;
 import static jdk.javadoc.internal.doclets.formats.html.LinkInfoImpl.Kind.MEMBER_TYPE_PARAMS;
 import static jdk.javadoc.internal.doclets.formats.html.LinkInfoImpl.Kind.RECEIVER_TYPE;
+import static jdk.javadoc.internal.doclets.formats.html.LinkInfoImpl.Kind.THROWS_TYPE;
 
 /**
  * Print method and constructor info.
@@ -112,8 +113,7 @@ public abstract class AbstractExecutableMemberWriter extends AbstractMemberWrite
             Content tdSummary) {
         ExecutableElement ee = (ExecutableElement)member;
         Content memberLink = HtmlTree.SPAN(HtmlStyle.memberNameLink,
-                writer.getDocLink(context, te, ee,
-                name(ee), false));
+                writer.getDocLink(context, te, ee, name(ee), false));
         Content code = HtmlTree.CODE(memberLink);
         addParameters(ee, code);
         tdSummary.add(code);
@@ -178,14 +178,11 @@ public abstract class AbstractExecutableMemberWriter extends AbstractMemberWrite
      */
     protected void addParameters(ExecutableElement member, Content htmltree) {
         Content paramTree = getParameters(member, false);
-        if (paramTree.isEmpty()) {
-            htmltree.add("()");
-        } else {
+        if (paramTree.charCount() > 2) {
+            // only add zero-width-space for non-empty parameters
             htmltree.add(Entity.ZERO_WIDTH_SPACE);
-            htmltree.add("(");
-            htmltree.add(paramTree);
-            paramTree.add(")");
         }
+        htmltree.add(paramTree);
     }
 
     /**
@@ -197,13 +194,14 @@ public abstract class AbstractExecutableMemberWriter extends AbstractMemberWrite
      */
     protected Content getParameters(ExecutableElement member, boolean includeAnnotations) {
         Content paramTree = new ContentBuilder();
+        paramTree.add("(");
         String sep = "";
         List<? extends VariableElement> parameters = member.getParameters();
         TypeMirror rcvrType = member.getReceiverType();
         if (includeAnnotations && rcvrType != null && utils.isAnnotated(rcvrType)) {
             List<? extends AnnotationMirror> annotationMirrors = rcvrType.getAnnotationMirrors();
             addReceiverAnnotations(member, rcvrType, annotationMirrors, paramTree);
-            sep = "," + DocletConstants.NL;
+            sep = "," + DocletConstants.NL + " ";
         }
         int paramstart;
         ExecutableType instMeth = utils.asInstantiatedMethodType(typeElement, member);
@@ -218,6 +216,7 @@ public abstract class AbstractExecutableMemberWriter extends AbstractMemberWrite
                             writer.addAnnotationInfo(param, paramTree);
                     if (foundAnnotations) {
                         paramTree.add(DocletConstants.NL);
+                        paramTree.add(" ");
                     }
                 }
                 addParam(member, param, paramType,
@@ -229,19 +228,22 @@ public abstract class AbstractExecutableMemberWriter extends AbstractMemberWrite
         for (int i = paramstart + 1; i < parameters.size(); i++) {
             paramTree.add(",");
             paramTree.add(DocletConstants.NL);
+            paramTree.add(" ");
+
             if (includeAnnotations) {
                 boolean foundAnnotations =
                         writer.addAnnotationInfo(parameters.get(i),
                         paramTree);
                 if (foundAnnotations) {
                     paramTree.add(DocletConstants.NL);
+                    paramTree.add(" ");
                 }
             }
             addParam(member, parameters.get(i), instMeth.getParameterTypes().get(i),
                     (i == parameters.size() - 1) && member.isVarArgs(),
                     paramTree);
         }
-
+        paramTree.add(")");
         return paramTree;
     }
 
@@ -253,19 +255,16 @@ public abstract class AbstractExecutableMemberWriter extends AbstractMemberWrite
      */
     protected Content getExceptions(ExecutableElement member) {
         List<? extends TypeMirror> exceptions = utils.asInstantiatedMethodType(typeElement, member).getThrownTypes();
-        Content htmltree = new ContentBuilder();
-        if (!exceptions.isEmpty()) {
-            Content link = writer.getLink(new LinkInfoImpl(configuration, MEMBER, exceptions.get(0)));
-            htmltree.add(link);
-            for (int i = 1; i < exceptions.size(); i++) {
-                htmltree.add(",");
-                htmltree.add(DocletConstants.NL);
-                Content exceptionLink = writer.getLink(new LinkInfoImpl(configuration, MEMBER,
-                        exceptions.get(i)));
-                htmltree.add(exceptionLink);
+        Content htmlTree = new ContentBuilder();
+        for (TypeMirror t : exceptions) {
+            if (!htmlTree.isEmpty()) {
+                htmlTree.add(",");
+                htmlTree.add(DocletConstants.NL);
             }
+            Content link = writer.getLink(new LinkInfoImpl(configuration, THROWS_TYPE, t));
+            htmlTree.add(link);
         }
-        return htmltree;
+        return htmlTree;
     }
 
     protected TypeElement implementsMethodInIntfac(ExecutableElement method,
@@ -302,7 +301,7 @@ public abstract class AbstractExecutableMemberWriter extends AbstractMemberWrite
                 buf.append(",");
             }
             TypeMirror t = parameters.get(i).asType();
-            SimpleTypeVisitor9<Boolean, Void> stv = new SimpleTypeVisitor9<Boolean, Void>() {
+            SimpleTypeVisitor9<Boolean, Void> stv = new SimpleTypeVisitor9<>() {
                 boolean foundTypeVariable = false;
 
                 @Override

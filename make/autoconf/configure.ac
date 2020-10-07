@@ -234,7 +234,6 @@ LIB_SETUP_LIBRARIES
 JVM_FEATURES_PARSE_OPTIONS
 JVM_FEATURES_SETUP
 
-HOTSPOT_ENABLE_DISABLE_GTEST
 HOTSPOT_SETUP_MISC
 
 ###############################################################################
@@ -243,12 +242,12 @@ HOTSPOT_SETUP_MISC
 #
 ###############################################################################
 
-JDKOPT_DETECT_INTREE_EC
 JDKOPT_ENABLE_DISABLE_FAILURE_HANDLER
 JDKOPT_ENABLE_DISABLE_GENERATE_CLASSLIST
 JDKOPT_EXCLUDE_TRANSLATIONS
 JDKOPT_ENABLE_DISABLE_MANPAGES
 JDKOPT_ENABLE_DISABLE_CDS_ARCHIVE
+JDKOPT_SETUP_REPRODUCIBLE_BUILD
 
 ###############################################################################
 #

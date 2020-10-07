@@ -53,8 +53,8 @@
 #include "prims/jvm_misc.hpp"
 #include "runtime/arguments.hpp"
 #include "runtime/atomic.hpp"
-#include "runtime/extendedPC.hpp"
 #include "runtime/globals.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
@@ -1180,14 +1180,6 @@ void os::shutdown() {
 void os::abort(bool dump_core, void* siginfo, const void* context) {
   os::shutdown();
   if (dump_core) {
-#ifndef PRODUCT
-    fdStream out(defaultStream::output_fd());
-    out.print_raw("Current thread is ");
-    char buf[16];
-    jio_snprintf(buf, sizeof(buf), UINTX_FORMAT, os::current_thread_id());
-    out.print_raw_cr(buf);
-    out.print_raw_cr("Dumping core ...");
-#endif
     ::abort(); // dump core
   }
 
@@ -1376,7 +1368,7 @@ void os::print_os_info_brief(outputStream* st) {
 }
 
 void os::print_os_info(outputStream* st) {
-  st->print("OS:");
+  st->print_cr("OS:");
 
   os::Posix::print_uname_info(st);
 
@@ -1736,7 +1728,7 @@ static void local_sem_init() {
   } else {
     // Memory semaphores must live in shared mem.
     guarantee0(p_sig_msem == NULL);
-    p_sig_msem = (msemaphore*)os::reserve_memory(sizeof(msemaphore), NULL);
+    p_sig_msem = (msemaphore*)os::reserve_memory(sizeof(msemaphore));
     guarantee(p_sig_msem, "Cannot allocate memory for memory semaphore");
     guarantee(::msem_init(p_sig_msem, 0) == p_sig_msem, "msem_init failed");
   }
@@ -1933,21 +1925,10 @@ static void vmembk_print_on(outputStream* os) {
 // If <requested_addr> is not NULL, function will attempt to attach the memory at the given
 // address. Failing that, it will attach the memory anywhere.
 // If <requested_addr> is NULL, function will attach the memory anywhere.
-//
-// <alignment_hint> is being ignored by this function. It is very probable however that the
-// alignment requirements are met anyway, because shmat() attaches at 256M boundaries.
-// Should this be not enogh, we can put more work into it.
-static char* reserve_shmated_memory (
-  size_t bytes,
-  char* requested_addr,
-  size_t alignment_hint) {
+static char* reserve_shmated_memory (size_t bytes, char* requested_addr) {
 
   trcVerbose("reserve_shmated_memory " UINTX_FORMAT " bytes, wishaddress "
-    PTR_FORMAT ", alignment_hint " UINTX_FORMAT "...",
-    bytes, p2i(requested_addr), alignment_hint);
-
-  // Either give me wish address or wish alignment but not both.
-  assert0(!(requested_addr != NULL && alignment_hint != 0));
+    PTR_FORMAT "...", bytes, p2i(requested_addr));
 
   // We must prevent anyone from attaching too close to the
   // BRK because that may cause malloc OOM.
@@ -2069,15 +2050,10 @@ static bool uncommit_shmated_memory(char* addr, size_t size) {
 // Reserve memory via mmap.
 // If <requested_addr> is given, an attempt is made to attach at the given address.
 // Failing that, memory is allocated at any address.
-// If <alignment_hint> is given and <requested_addr> is NULL, an attempt is made to
-// allocate at an address aligned with the given alignment. Failing that, memory
-// is aligned anywhere.
-static char* reserve_mmaped_memory(size_t bytes, char* requested_addr, size_t alignment_hint) {
-  trcVerbose("reserve_mmaped_memory " UINTX_FORMAT " bytes, wishaddress " PTR_FORMAT ", "
-    "alignment_hint " UINTX_FORMAT "...",
-    bytes, p2i(requested_addr), alignment_hint);
+static char* reserve_mmaped_memory(size_t bytes, char* requested_addr) {
+  trcVerbose("reserve_mmaped_memory " UINTX_FORMAT " bytes, wishaddress " PTR_FORMAT "...",
+    bytes, p2i(requested_addr));
 
-  // If a wish address is given, but not aligned to 4K page boundary, mmap will fail.
   if (requested_addr && !is_aligned_to(requested_addr, os::vm_page_size()) != 0) {
     trcVerbose("Wish address " PTR_FORMAT " not aligned to page boundary.", p2i(requested_addr));
     return NULL;
@@ -2092,26 +2068,21 @@ static char* reserve_mmaped_memory(size_t bytes, char* requested_addr, size_t al
     requested_addr = NULL;
   }
 
-  // Specify one or the other but not both.
-  assert0(!(requested_addr != NULL && alignment_hint > 0));
-
-  // In 64K mode, we claim the global page size (os::vm_page_size())
-  // is 64K. This is one of the few points where that illusion may
-  // break, because mmap() will always return memory aligned to 4K. So
-  // we must ensure we only ever return memory aligned to 64k.
-  if (alignment_hint) {
-    alignment_hint = lcm(alignment_hint, os::vm_page_size());
-  } else {
-    alignment_hint = os::vm_page_size();
-  }
+  // In 64K mode, we lie and claim the global page size (os::vm_page_size()) is 64K
+  //  (complicated story). This mostly works just fine since 64K is a multiple of the
+  //  actual 4K lowest page size. Only at a few seams light shines thru, e.g. when
+  //  calling mmap. mmap will return memory aligned to the lowest pages size - 4K -
+  //  so we must make sure - transparently - that the caller only ever sees 64K
+  //  aligned mapping start addresses.
+  const size_t alignment = os::vm_page_size();
 
   // Size shall always be a multiple of os::vm_page_size (esp. in 64K mode).
   const size_t size = align_up(bytes, os::vm_page_size());
 
   // alignment: Allocate memory large enough to include an aligned range of the right size and
   // cut off the leading and trailing waste pages.
-  assert0(alignment_hint != 0 && is_aligned_to(alignment_hint, os::vm_page_size())); // see above
-  const size_t extra_size = size + alignment_hint;
+  assert0(alignment != 0 && is_aligned_to(alignment, os::vm_page_size())); // see above
+  const size_t extra_size = size + alignment;
 
   // Note: MAP_SHARED (instead of MAP_PRIVATE) needed to be able to
   // later use msync(MS_INVALIDATE) (see os::uncommit_memory).
@@ -2139,7 +2110,7 @@ static char* reserve_mmaped_memory(size_t bytes, char* requested_addr, size_t al
   }
 
   // Handle alignment.
-  char* const addr_aligned = align_up(addr, alignment_hint);
+  char* const addr_aligned = align_up(addr, alignment);
   const size_t waste_pre = addr_aligned - addr;
   char* const addr_aligned_end = addr_aligned + size;
   const size_t waste_post = extra_size - waste_pre - size;
@@ -2355,33 +2326,19 @@ char *os::scan_pages(char *start, char* end, page_info* page_expected, page_info
 }
 
 // Reserves and attaches a shared memory segment.
-// Will assert if a wish address is given and could not be obtained.
-char* os::pd_reserve_memory(size_t bytes, char* requested_addr, size_t alignment_hint) {
-
-  // All other Unices do a mmap(MAP_FIXED) if the addr is given,
-  // thereby clobbering old mappings at that place. That is probably
-  // not intended, never used and almost certainly an error were it
-  // ever be used this way (to try attaching at a specified address
-  // without clobbering old mappings an alternate API exists,
-  // os::attempt_reserve_memory_at()).
-  // Instead of mimicking the dangerous coding of the other platforms, here I
-  // just ignore the request address (release) or assert(debug).
-  assert0(requested_addr == NULL);
-
+char* os::pd_reserve_memory(size_t bytes) {
   // Always round to os::vm_page_size(), which may be larger than 4K.
   bytes = align_up(bytes, os::vm_page_size());
-  const size_t alignment_hint0 =
-    alignment_hint ? align_up(alignment_hint, os::vm_page_size()) : 0;
 
   // In 4K mode always use mmap.
   // In 64K mode allocate small sizes with mmap, large ones with 64K shmatted.
   if (os::vm_page_size() == 4*K) {
-    return reserve_mmaped_memory(bytes, requested_addr, alignment_hint);
+    return reserve_mmaped_memory(bytes, NULL /* requested_addr */);
   } else {
     if (bytes >= Use64KPagesThreshold) {
-      return reserve_shmated_memory(bytes, requested_addr, alignment_hint);
+      return reserve_shmated_memory(bytes, NULL /* requested_addr */);
     } else {
-      return reserve_mmaped_memory(bytes, requested_addr, alignment_hint);
+      return reserve_mmaped_memory(bytes, NULL /* requested_addr */);
     }
   }
 }
@@ -2552,13 +2509,13 @@ bool os::can_execute_large_page_memory() {
   return false;
 }
 
-char* os::pd_attempt_reserve_memory_at(size_t bytes, char* requested_addr, int file_desc) {
+char* os::pd_attempt_reserve_memory_at(char* requested_addr, size_t bytes, int file_desc) {
   assert(file_desc >= 0, "file_desc is not valid");
   char* result = NULL;
 
   // Always round to os::vm_page_size(), which may be larger than 4K.
   bytes = align_up(bytes, os::vm_page_size());
-  result = reserve_mmaped_memory(bytes, requested_addr, 0);
+  result = reserve_mmaped_memory(bytes, requested_addr);
 
   if (result != NULL) {
     if (replace_existing_mapping_with_file_mapping(result, bytes, file_desc) == NULL) {
@@ -2570,7 +2527,7 @@ char* os::pd_attempt_reserve_memory_at(size_t bytes, char* requested_addr, int f
 
 // Reserve memory at an arbitrary address, only if that area is
 // available (and not reserved for something else).
-char* os::pd_attempt_reserve_memory_at(size_t bytes, char* requested_addr) {
+char* os::pd_attempt_reserve_memory_at(char* requested_addr, size_t bytes) {
   char* addr = NULL;
 
   // Always round to os::vm_page_size(), which may be larger than 4K.
@@ -2579,12 +2536,12 @@ char* os::pd_attempt_reserve_memory_at(size_t bytes, char* requested_addr) {
   // In 4K mode always use mmap.
   // In 64K mode allocate small sizes with mmap, large ones with 64K shmatted.
   if (os::vm_page_size() == 4*K) {
-    return reserve_mmaped_memory(bytes, requested_addr, 0);
+    return reserve_mmaped_memory(bytes, requested_addr);
   } else {
     if (bytes >= Use64KPagesThreshold) {
-      return reserve_shmated_memory(bytes, requested_addr, 0);
+      return reserve_shmated_memory(bytes, requested_addr);
     } else {
-      return reserve_mmaped_memory(bytes, requested_addr, 0);
+      return reserve_mmaped_memory(bytes, requested_addr);
     }
   }
 
@@ -2712,7 +2669,7 @@ OSReturn os::get_native_priority(const Thread* const thread, int *priority_ptr) 
 //  The SR_lock is, however, used by JavaThread::java_suspend()/java_resume() APIs.
 //
 //  Note that resume_clear_context() and suspend_save_context() are needed
-//  by SR_handler(), so that fetch_frame_from_ucontext() works,
+//  by SR_handler(), so that fetch_frame_from_context() works,
 //  which in part is used by:
 //    - Forte Analyzer: AsyncGetCallTrace()
 //    - StackBanging: get_frame_at_stack_banging_point()
@@ -3549,10 +3506,9 @@ jint os::init_2(void) {
     return JNI_ERR;
   }
 
-  if (UseNUMA) {
-    UseNUMA = false;
-    warning("NUMA optimizations are not available on this OS.");
-  }
+  // Not supported.
+  FLAG_SET_ERGO(UseNUMA, false);
+  FLAG_SET_ERGO(UseNUMAInterleaving, false);
 
   if (MaxFDLimit) {
     // Set the number of file descriptors to max. print out error

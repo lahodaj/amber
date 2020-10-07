@@ -401,8 +401,7 @@ void NodeHash::operator=(const NodeHash& nh) {
 //=============================================================================
 //------------------------------PhaseRemoveUseless-----------------------------
 // 1) Use a breadthfirst walk to collect useful nodes reachable from root.
-PhaseRemoveUseless::PhaseRemoveUseless(PhaseGVN *gvn, Unique_Node_List *worklist, PhaseNumber phase_num) : Phase(phase_num),
-  _useful(Thread::current()->resource_area()) {
+PhaseRemoveUseless::PhaseRemoveUseless(PhaseGVN* gvn, Unique_Node_List* worklist, PhaseNumber phase_num) : Phase(phase_num) {
 
   // Implementation requires 'UseLoopSafepoints == true' and an edge from root
   // to each SafePointNode at a backward branch.  Inserted in add_safepoint().
@@ -456,7 +455,6 @@ PhaseRenumberLive::PhaseRenumberLive(PhaseGVN* gvn,
   PhaseRemoveUseless(gvn, worklist, Remove_Useless_And_Renumber_Live),
   _new_type_array(C->comp_arena()),
   _old2new_map(C->unique(), C->unique(), -1),
-  _delayed(Thread::current()->resource_area()),
   _is_pass_finished(false),
   _live_node_count(C->live_nodes())
 {
@@ -662,9 +660,9 @@ void PhaseTransform::dump_types( ) const {
 }
 
 //------------------------------dump_nodes_and_types---------------------------
-void PhaseTransform::dump_nodes_and_types(const Node *root, uint depth, bool only_ctrl) {
-  VectorSet visited(Thread::current()->resource_area());
-  dump_nodes_and_types_recur( root, depth, only_ctrl, visited );
+void PhaseTransform::dump_nodes_and_types(const Node* root, uint depth, bool only_ctrl) {
+  VectorSet visited;
+  dump_nodes_and_types_recur(root, depth, only_ctrl, visited);
 }
 
 //------------------------------dump_nodes_and_types_recur---------------------
@@ -977,26 +975,11 @@ PhaseIterGVN::PhaseIterGVN( PhaseGVN *gvn ) : PhaseGVN(gvn),
   }
 }
 
-/**
- * Initialize worklist for each node.
- */
-void PhaseIterGVN::init_worklist(Node* first) {
-  Unique_Node_List to_process;
-  to_process.push(first);
-
-  while (to_process.size() > 0) {
-    Node* n = to_process.pop();
-    if (!_worklist.member(n)) {
-      _worklist.push(n);
-
-      uint cnt = n->req();
-      for(uint i = 0; i < cnt; i++) {
-        Node* m = n->in(i);
-        if (m != NULL) {
-          to_process.push(m);
-        }
-      }
-    }
+void PhaseIterGVN::shuffle_worklist() {
+  if (_worklist.size() < 2) return;
+  for (uint i = _worklist.size() - 1; i >= 1; i--) {
+    uint j = C->random() % (i + 1);
+    swap(_worklist.adr()[i], _worklist.adr()[j]);
   }
 }
 
@@ -1005,24 +988,22 @@ void PhaseIterGVN::verify_step(Node* n) {
   if (VerifyIterativeGVN) {
     _verify_window[_verify_counter % _verify_window_size] = n;
     ++_verify_counter;
-    ResourceMark rm;
-    ResourceArea* area = Thread::current()->resource_area();
-    VectorSet old_space(area), new_space(area);
-    if (C->unique() < 1000 ||
-        0 == _verify_counter % (C->unique() < 10000 ? 10 : 100)) {
+    if (C->unique() < 1000 || 0 == _verify_counter % (C->unique() < 10000 ? 10 : 100)) {
       ++_verify_full_passes;
-      Node::verify_recur(C->root(), -1, old_space, new_space);
+      Node::verify(C->root(), -1);
     }
-    const int verify_depth = 4;
-    for ( int i = 0; i < _verify_window_size; i++ ) {
+    for (int i = 0; i < _verify_window_size; i++) {
       Node* n = _verify_window[i];
-      if ( n == NULL )  continue;
-      if( n->in(0) == NodeSentinel ) {  // xform_idom
+      if (n == NULL) {
+        continue;
+      }
+      if (n->in(0) == NodeSentinel) { // xform_idom
         _verify_window[i] = n->in(1);
-        --i; continue;
+        --i;
+        continue;
       }
       // Typical fanout is 1-2, so this call visits about 6 nodes.
-      Node::verify_recur(n, verify_depth, old_space, new_space);
+      Node::verify(n, 4);
     }
   }
 }
@@ -1154,6 +1135,9 @@ void PhaseIterGVN::trace_PhaseIterGVN_verbose(Node* n, int num_processed) {
 void PhaseIterGVN::optimize() {
   DEBUG_ONLY(uint num_processed  = 0;)
   NOT_PRODUCT(init_verifyPhaseIterGVN();)
+  if (StressIGVN) {
+    shuffle_worklist();
+  }
 
   uint loop_count = 0;
   // Pull from worklist and transform the node. If the node has changed,

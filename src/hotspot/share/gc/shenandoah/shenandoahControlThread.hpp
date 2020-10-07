@@ -52,6 +52,13 @@ public:
   virtual void task();
 };
 
+// Periodic task to notify blocked paced waiters.
+class ShenandoahPeriodicPacerNotify : public PeriodicTask {
+public:
+  ShenandoahPeriodicPacerNotify() : PeriodicTask(PeriodicTask::min_interval) {}
+  virtual void task();
+};
+
 class ShenandoahControlThread: public ConcurrentGCThread {
   friend class VMStructs;
 
@@ -70,6 +77,7 @@ private:
   Monitor _gc_waiters_lock;
   ShenandoahPeriodicTask _periodic_task;
   ShenandoahPeriodicSATBFlushTask _periodic_satb_flush_task;
+  ShenandoahPeriodicPacerNotify _periodic_pacer_notify_task;
 
 public:
   void run_service();
@@ -95,7 +103,7 @@ private:
   void service_concurrent_normal_cycle(GCCause::Cause cause);
   void service_stw_full_cycle(GCCause::Cause cause);
   void service_stw_degenerated_cycle(GCCause::Cause cause, ShenandoahHeap::ShenandoahDegenPoint point);
-  void service_uncommit(double shrink_before);
+  void service_uncommit(double shrink_before, size_t shrink_until);
 
   bool try_set_alloc_failure_gc();
   void notify_alloc_failure_waiters();
@@ -112,6 +120,9 @@ private:
   void handle_requested_gc(GCCause::Cause cause);
 
   bool is_explicit_gc(GCCause::Cause cause) const;
+
+  bool check_soft_max_changed() const;
+
 public:
   // Constructor
   ShenandoahControlThread();

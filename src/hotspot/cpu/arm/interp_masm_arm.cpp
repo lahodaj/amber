@@ -883,6 +883,13 @@ void InterpreterMacroAssembler::lock_object(Register Rlock) {
     // Load object pointer
     ldr(Robj, Address(Rlock, obj_offset));
 
+    if (DiagnoseSyncOnPrimitiveWrappers != 0) {
+      load_klass(R0, Robj);
+      ldr_u32(R0, Address(R0, Klass::access_flags_offset()));
+      tst(R0, JVM_ACC_IS_BOX_CLASS);
+      b(slow_case, ne);
+    }
+
     if (UseBiasedLocking) {
       biased_locking_enter(Robj, Rmark/*scratched*/, R0, false, Rtemp, done, slow_case);
     }
@@ -983,7 +990,7 @@ void InterpreterMacroAssembler::unlock_object(Register Rlock) {
   assert(Rlock == R1, "the second argument");
 
   if (UseHeavyMonitors) {
-    call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::monitorexit), Rlock);
+    call_VM_leaf(CAST_FROM_FN_PTR(address, InterpreterRuntime::monitorexit), Rlock);
   } else {
     Label done, slow_case;
 
@@ -1024,7 +1031,7 @@ void InterpreterMacroAssembler::unlock_object(Register Rlock) {
 
     // Call the runtime routine for slow case.
     str(Robj, Address(Rlock, obj_offset)); // restore obj
-    call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::monitorexit), Rlock);
+    call_VM_leaf(CAST_FROM_FN_PTR(address, InterpreterRuntime::monitorexit), Rlock);
 
     bind(done);
   }

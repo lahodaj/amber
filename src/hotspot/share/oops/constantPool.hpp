@@ -189,7 +189,7 @@ class ConstantPool : public Metadata {
  public:
   static ConstantPool* allocate(ClassLoaderData* loader_data, int length, TRAPS);
 
-  bool is_constantPool() const volatile     { return true; }
+  virtual bool is_constantPool() const      { return true; }
 
   Array<u1>* tags() const                   { return _tags; }
   Array<u2>* operands() const               { return _operands; }
@@ -495,7 +495,7 @@ class ConstantPool : public Metadata {
   // a String entry.
   // This can happen if the user patches a live
   // object into a CONSTANT_String entry of an unsafe anonymous class.
-  // Method oops internally created for method handles may also
+  // Methods internally created for method handles may also
   // use pseudo-strings to link themselves to related metaobjects.
 
   bool is_pseudo_string_at(int which);
@@ -740,6 +740,7 @@ class ConstantPool : public Metadata {
 
   // CDS support
   void archive_resolved_references(Thread *THREAD) NOT_CDS_JAVA_HEAP_RETURN;
+  void add_dumped_interned_strings() NOT_CDS_JAVA_HEAP_RETURN;
   void resolve_class_constants(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   void remove_unshareable_info();
   void restore_unshareable_info(TRAPS);

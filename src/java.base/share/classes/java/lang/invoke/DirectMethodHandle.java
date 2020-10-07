@@ -51,9 +51,10 @@ import static java.lang.invoke.MethodTypeForm.*;
  */
 class DirectMethodHandle extends MethodHandle {
     final MemberName member;
+    final boolean crackable;
 
     // Constructors and factory methods in this class *must* be package scoped or private.
-    private DirectMethodHandle(MethodType mtype, LambdaForm form, MemberName member) {
+    private DirectMethodHandle(MethodType mtype, LambdaForm form, MemberName member, boolean crackable) {
         super(mtype, form);
         if (!member.isResolved())  throw new InternalError();
 
@@ -62,7 +63,7 @@ class DirectMethodHandle extends MethodHandle {
             member.isMethod() && !member.isAbstract()) {
             // Check for corner case: invokeinterface of Object method
             MemberName m = new MemberName(Object.class, member.getName(), member.getMethodType(), member.getReferenceKind());
-            m = MemberName.getFactory().resolveOrNull(m.getReferenceKind(), m, null);
+            m = MemberName.getFactory().resolveOrNull(m.getReferenceKind(), m, null, LM_TRUSTED);
             if (m != null && m.isPublic()) {
                 assert(member.getReferenceKind() == m.getReferenceKind());  // else this.form is wrong
                 member = m;
@@ -70,6 +71,7 @@ class DirectMethodHandle extends MethodHandle {
         }
 
         this.member = member;
+        this.crackable = crackable;
     }
 
     // Factory methods:
@@ -92,18 +94,18 @@ class DirectMethodHandle extends MethodHandle {
                         throw new InternalError("callerClass must not be null for REF_invokeSpecial");
                     }
                     LambdaForm lform = preparedLambdaForm(member, callerClass.isInterface());
-                    return new Special(mtype, lform, member, callerClass);
+                    return new Special(mtype, lform, member, true, callerClass);
                 }
                 case REF_invokeInterface: {
                     // for interfaces we always need the receiver typecheck,
                     // so we always pass 'true' to ensure we adapt if needed
                     // to include the REF_invokeSpecial case
                     LambdaForm lform = preparedLambdaForm(member, true);
-                    return new Interface(mtype, lform, member, refc);
+                    return new Interface(mtype, lform, member, true, refc);
                 }
                 default: {
                     LambdaForm lform = preparedLambdaForm(member);
-                    return new DirectMethodHandle(mtype, lform, member);
+                    return new DirectMethodHandle(mtype, lform, member, true);
                 }
             }
         } else {
@@ -111,11 +113,11 @@ class DirectMethodHandle extends MethodHandle {
             if (member.isStatic()) {
                 long offset = MethodHandleNatives.staticFieldOffset(member);
                 Object base = MethodHandleNatives.staticFieldBase(member);
-                return new StaticAccessor(mtype, lform, member, base, offset);
+                return new StaticAccessor(mtype, lform, member, true, base, offset);
             } else {
                 long offset = MethodHandleNatives.objectFieldOffset(member);
                 assert(offset == (int)offset);
-                return new Accessor(mtype, lform, member, (int)offset);
+                return new Accessor(mtype, lform, member, true, (int)offset);
             }
         }
     }
@@ -139,7 +141,7 @@ class DirectMethodHandle extends MethodHandle {
         LambdaForm lform = preparedLambdaForm(ctor);
         MemberName init = ctor.asSpecial();
         assert(init.getMethodType().returnType() == void.class);
-        return new Constructor(mtype, lform, ctor, init, instanceClass);
+        return new Constructor(mtype, lform, ctor, true, init, instanceClass);
     }
 
     @Override
@@ -150,7 +152,22 @@ class DirectMethodHandle extends MethodHandle {
     @Override
     MethodHandle copyWith(MethodType mt, LambdaForm lf) {
         assert(this.getClass() == DirectMethodHandle.class);  // must override in subclasses
-        return new DirectMethodHandle(mt, lf, member);
+        return new DirectMethodHandle(mt, lf, member, crackable);
+    }
+
+    @Override
+    MethodHandle viewAsType(MethodType newType, boolean strict) {
+        // No actual conversions, just a new view of the same method.
+        // However, we must not expose a DMH that is crackable into a
+        // MethodHandleInfo, so we return a cloned, uncrackable DMH
+        assert(viewAsTypeChecks(newType, strict));
+        assert(this.getClass() == DirectMethodHandle.class);  // must override in subclasses
+        return new DirectMethodHandle(newType, form, member, false);
+    }
+
+    @Override
+    boolean isCrackable() {
+        return crackable;
     }
 
     @Override
@@ -243,7 +260,8 @@ class DirectMethodHandle extends MethodHandle {
                     .changeReturnType(void.class);          // <init> returns void
         MemberName linker = new MemberName(MethodHandle.class, linkerName, mtypeWithArg, REF_invokeStatic);
         try {
-            linker = IMPL_NAMES.resolveOrFail(REF_invokeStatic, linker, null, NoSuchMethodException.class);
+            linker = IMPL_NAMES.resolveOrFail(REF_invokeStatic, linker, null, LM_TRUSTED,
+                                              NoSuchMethodException.class);
         } catch (ReflectiveOperationException ex) {
             throw newInternalError(ex);
         }
@@ -406,8 +424,8 @@ class DirectMethodHandle extends MethodHandle {
     /** This subclass represents invokespecial instructions. */
     static class Special extends DirectMethodHandle {
         private final Class<?> caller;
-        private Special(MethodType mtype, LambdaForm form, MemberName member, Class<?> caller) {
-            super(mtype, form, member);
+        private Special(MethodType mtype, LambdaForm form, MemberName member, boolean crackable, Class<?> caller) {
+            super(mtype, form, member, crackable);
             this.caller = caller;
         }
         @Override
@@ -416,7 +434,12 @@ class DirectMethodHandle extends MethodHandle {
         }
         @Override
         MethodHandle copyWith(MethodType mt, LambdaForm lf) {
-            return new Special(mt, lf, member, caller);
+            return new Special(mt, lf, member, crackable, caller);
+        }
+        @Override
+        MethodHandle viewAsType(MethodType newType, boolean strict) {
+            assert(viewAsTypeChecks(newType, strict));
+            return new Special(newType, form, member, false, caller);
         }
         Object checkReceiver(Object recv) {
             if (!caller.isInstance(recv)) {
@@ -431,14 +454,19 @@ class DirectMethodHandle extends MethodHandle {
     /** This subclass represents invokeinterface instructions. */
     static class Interface extends DirectMethodHandle {
         private final Class<?> refc;
-        private Interface(MethodType mtype, LambdaForm form, MemberName member, Class<?> refc) {
-            super(mtype, form, member);
-            assert refc.isInterface() : refc;
+        private Interface(MethodType mtype, LambdaForm form, MemberName member, boolean crackable, Class<?> refc) {
+            super(mtype, form, member, crackable);
+            assert(refc.isInterface()) : refc;
             this.refc = refc;
         }
         @Override
         MethodHandle copyWith(MethodType mt, LambdaForm lf) {
-            return new Interface(mt, lf, member, refc);
+            return new Interface(mt, lf, member, crackable, refc);
+        }
+        @Override
+        MethodHandle viewAsType(MethodType newType, boolean strict) {
+            assert(viewAsTypeChecks(newType, strict));
+            return new Interface(newType, form, member, false, refc);
         }
         @Override
         Object checkReceiver(Object recv) {
@@ -456,22 +484,26 @@ class DirectMethodHandle extends MethodHandle {
         throw new InternalError("Should only be invoked on a subclass");
     }
 
-
     /** This subclass handles constructor references. */
     static class Constructor extends DirectMethodHandle {
         final MemberName initMethod;
         final Class<?>   instanceClass;
 
         private Constructor(MethodType mtype, LambdaForm form, MemberName constructor,
-                            MemberName initMethod, Class<?> instanceClass) {
-            super(mtype, form, constructor);
+                            boolean crackable, MemberName initMethod, Class<?> instanceClass) {
+            super(mtype, form, constructor, crackable);
             this.initMethod = initMethod;
             this.instanceClass = instanceClass;
             assert(initMethod.isResolved());
         }
         @Override
         MethodHandle copyWith(MethodType mt, LambdaForm lf) {
-            return new Constructor(mt, lf, member, initMethod, instanceClass);
+            return new Constructor(mt, lf, member, crackable, initMethod, instanceClass);
+        }
+        @Override
+        MethodHandle viewAsType(MethodType newType, boolean strict) {
+            assert(viewAsTypeChecks(newType, strict));
+            return new Constructor(newType, form, member, false, initMethod, instanceClass);
         }
     }
 
@@ -492,8 +524,8 @@ class DirectMethodHandle extends MethodHandle {
         final Class<?> fieldType;
         final int      fieldOffset;
         private Accessor(MethodType mtype, LambdaForm form, MemberName member,
-                         int fieldOffset) {
-            super(mtype, form, member);
+                         boolean crackable, int fieldOffset) {
+            super(mtype, form, member, crackable);
             this.fieldType   = member.getFieldType();
             this.fieldOffset = fieldOffset;
         }
@@ -503,7 +535,12 @@ class DirectMethodHandle extends MethodHandle {
         }
         @Override
         MethodHandle copyWith(MethodType mt, LambdaForm lf) {
-            return new Accessor(mt, lf, member, fieldOffset);
+            return new Accessor(mt, lf, member, crackable, fieldOffset);
+        }
+        @Override
+        MethodHandle viewAsType(MethodType newType, boolean strict) {
+            assert(viewAsTypeChecks(newType, strict));
+            return new Accessor(newType, form, member, false, fieldOffset);
         }
     }
 
@@ -535,8 +572,8 @@ class DirectMethodHandle extends MethodHandle {
         private final long     staticOffset;
 
         private StaticAccessor(MethodType mtype, LambdaForm form, MemberName member,
-                               Object staticBase, long staticOffset) {
-            super(mtype, form, member);
+                               boolean crackable, Object staticBase, long staticOffset) {
+            super(mtype, form, member, crackable);
             this.fieldType    = member.getFieldType();
             this.staticBase   = staticBase;
             this.staticOffset = staticOffset;
@@ -547,7 +584,12 @@ class DirectMethodHandle extends MethodHandle {
         }
         @Override
         MethodHandle copyWith(MethodType mt, LambdaForm lf) {
-            return new StaticAccessor(mt, lf, member, staticBase, staticOffset);
+            return new StaticAccessor(mt, lf, member, crackable, staticBase, staticOffset);
+        }
+        @Override
+        MethodHandle viewAsType(MethodType newType, boolean strict) {
+            assert(viewAsTypeChecks(newType, strict));
+            return new StaticAccessor(newType, form, member, false, staticBase, staticOffset);
         }
     }
 
@@ -730,7 +772,8 @@ class DirectMethodHandle extends MethodHandle {
             linkerType = MethodType.methodType(void.class, Object.class, long.class, ft);
         MemberName linker = new MemberName(Unsafe.class, kind.methodName, linkerType, REF_invokeVirtual);
         try {
-            linker = IMPL_NAMES.resolveOrFail(REF_invokeVirtual, linker, null, NoSuchMethodException.class);
+            linker = IMPL_NAMES.resolveOrFail(REF_invokeVirtual, linker, null, LM_TRUSTED,
+                                              NoSuchMethodException.class);
         } catch (ReflectiveOperationException ex) {
             throw newInternalError(ex);
         }
@@ -873,13 +916,15 @@ class DirectMethodHandle extends MethodHandle {
                 case NF_UNSAFE:
                     MemberName member = new MemberName(MethodHandleStatics.class, "UNSAFE", Unsafe.class, REF_getField);
                     return new NamedFunction(
-                            MemberName.getFactory()
-                                    .resolveOrFail(REF_getField, member, DirectMethodHandle.class, NoSuchMethodException.class));
+                            MemberName.getFactory().resolveOrFail(REF_getField, member,
+                                                                  DirectMethodHandle.class, LM_TRUSTED,
+                                                                  NoSuchMethodException.class));
                 case NF_checkReceiver:
                     member = new MemberName(DirectMethodHandle.class, "checkReceiver", OBJ_OBJ_TYPE, REF_invokeVirtual);
                     return new NamedFunction(
-                        MemberName.getFactory()
-                            .resolveOrFail(REF_invokeVirtual, member, DirectMethodHandle.class, NoSuchMethodException.class));
+                            MemberName.getFactory().resolveOrFail(REF_invokeVirtual, member,
+                                                                  DirectMethodHandle.class, LM_TRUSTED,
+                                                                  NoSuchMethodException.class));
                 default:
                     throw newInternalError("Unknown function: " + func);
             }
@@ -893,8 +938,9 @@ class DirectMethodHandle extends MethodHandle {
     {
         MemberName member = new MemberName(DirectMethodHandle.class, name, type, REF_invokeStatic);
         return new NamedFunction(
-            MemberName.getFactory()
-                .resolveOrFail(REF_invokeStatic, member, DirectMethodHandle.class, NoSuchMethodException.class));
+                MemberName.getFactory().resolveOrFail(REF_invokeStatic, member,
+                                                      DirectMethodHandle.class, LM_TRUSTED,
+                                                      NoSuchMethodException.class));
     }
 
     static {

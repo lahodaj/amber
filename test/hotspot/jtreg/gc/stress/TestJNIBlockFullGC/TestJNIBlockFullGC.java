@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2017, SAP SE and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017 SAP SE and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,7 +27,7 @@ package gc.stress.TestJNIBlockFullGC;
 /*
  * @test TestJNIBlockFullGC
  * @summary Check that in G1 a Full GC to reclaim space can not be blocked out by the GC locker.
- * @key gc randomness
+ * @key randomness
  * @requires vm.gc.G1
  * @library /test/lib
  * @run main/othervm/native -Xmx64m -XX:+UseG1GC -Xlog:gc=info,gc+alloc=trace -XX:MaxGCPauseMillis=10 gc.stress.TestJNIBlockFullGC.TestJNIBlockFullGC 10 10000 10000 10000 30000 10000 0.7

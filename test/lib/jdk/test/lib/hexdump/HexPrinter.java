@@ -91,7 +91,7 @@ import java.util.Objects;
  * {@linkplain Formatter Formatter} functions read and interpret the bytes to show the
  * structure and content of a protocol or data stream.
  * Built-in formatters include {@link HexPrinter#formatter(Class, String) primitives},
- * {@link Formatters#PRINTABLE printable ascii},
+ * {@link Formatters#PRINTABLE printable bytes},
  * and {@link Formatters#utf8Parser(DataInputStream, Appendable) UTF-8 strings}.
  * The {@link #formatter(Formatter, String, int) formatter} method sets the
  * formatting function, the delimiter, and the width.
@@ -162,7 +162,6 @@ public final class HexPrinter {
             "dle", "dc1", "dc2", "dc3", "dc4", "nak", "syn", "etb",
             "can", "em", "sub", "esc", "fs", "gs", "rs", "us"
     };
-    private static final String initOffsetFormat = "%5d: ";
     private static final int initBytesCount = 16;   // 16 byte values
     private static final String initBytesFormat = "%02x ";
     private static final int initAnnoWidth = initBytesCount * 4;
@@ -238,7 +237,7 @@ public final class HexPrinter {
      * <LI>each byte value is formatted as 2 hex digits and a space: {@code "%02x "},
      * <LI>maximum number of byte values per line: {@value initBytesCount},
      * <LI>delimiter for the annotation: {@code "|"},
-     * <LI>formatter: {@link Formatters#ASCII ASCII bytes}, and
+     * <LI>formatter: {@link Formatters#PRINTABLE printable bytes}, and
      * <LI>line separator: "|" + {@link  System#lineSeparator()},
      * <LI>destination: {@link System#out System.out}.
      * </UL>
@@ -254,7 +253,7 @@ public final class HexPrinter {
      * @return a new HexPrinter
      */
     public static HexPrinter canonical() {
-        return new HexPrinter(Formatters.ASCII, "%08x  ",
+        return new HexPrinter(Formatters.PRINTABLE, "%08x  ",
                 "%02x ", initBytesCount,
                 "|", 31, "|" + System.lineSeparator(),
                 System.out);
@@ -265,13 +264,13 @@ public final class HexPrinter {
      * to a multi-line string.
      * The parameters are set to:
      * <UL>
-     * <LI>byte offset format: signed decimal width 5 and a space, {@code "%5d: "},
+     * <LI>byte offset format: hexadecimal width 4, colon, and a space, {@code "%04x: "},
      * <LI>each byte value is formatted as 2 hex digits and a space: {@code "%02x "},
      * <LI>maximum number of byte values per line: {@value initBytesCount},
      * <LI>delimiter for the annotation: {@code " // "},
      * <LI>width for the annotation: {@value initAnnoWidth},
      * <LI>line separator: {@link System#lineSeparator()},
-     * <LI>formatter: {@link Formatters#PRINTABLE printable ASCII}
+     * <LI>formatter: {@link Formatters#ASCII ASCII bytes}
      * showing printable characters, mnemonics for control chars, and
      * otherwise the decimal byte values,
      * <LI>destination default: {@link System#out System.out}.
@@ -288,7 +287,7 @@ public final class HexPrinter {
      * @return a new HexPrinter
      */
     public static HexPrinter simple() {
-        return new HexPrinter(Formatters.PRINTABLE, initOffsetFormat,
+        return new HexPrinter(Formatters.ASCII, "%04x: ",
                 initBytesFormat, initBytesCount,
                 initAnnoDelim, initAnnoWidth, System.lineSeparator(),
                 System.out);
@@ -305,9 +304,8 @@ public final class HexPrinter {
      * <LI>delimiter for the annotation: {@code " // "},
      * <LI>width for the annotation: {@value initAnnoWidth},
      * <LI>line separator: {@link System#lineSeparator()},
-     * <LI>formatter: {@link Formatters#PRINTABLE printable ASCII}
-     * showing printable characters, mnemonics for control chars, and
-     * otherwise the decimal byte values,
+     * <LI>formatter: {@link Formatters#PRINTABLE printable bytes}
+     * showing printable characters and otherwise ".",
      * <LI>destination default: {@link System#out System.out}.
      * </UL>
      *
@@ -426,34 +424,30 @@ public final class HexPrinter {
     }
 
     /**
-     * The formatter function is called repeatedly to read the bytes
-     * from the offset for the length and append the output.
+     * The formatter function is called for the range of the ByteBuffer's contents.
      * All annotation output is appended and flushed to the output destination.
-     * The ByteBuffer position and limit are unused and not modified.
+     * The ByteBuffer position is not used and not modified.
      *
      * @param source a ByteBuffer
-     * @param offset the offset in the ByteBuffer
-     * @param length the length in the ByteBuffer
+     * @param index the index in the ByteBuffer, must be non-negative and
+     *              less than {@code limit()}.
+     * @param length the length in the ByteBuffer must be non-negative and
+     *               no larger than {@code source.limit() - index}
      * @return this HexPrinter
      * @throws java.io.UncheckedIOException if an I/O error occurs
+     * @throws java.lang.IndexOutOfBoundsException if the preconditions on
+     *          {@code index} and {@code length} do not hold
      */
-    public HexPrinter format(ByteBuffer source, int offset, int length) {
+    public HexPrinter format(ByteBuffer source, int index, int length) {
         Objects.requireNonNull(source, "ByteBuffer must be non-null");
-        ByteArrayInputStream bais;
-        if (source.hasArray() && !source.isReadOnly()) {
-            bais = new ByteArrayInputStream(source.array(), offset, length);
-        } else {
-            int size = source.limit() - source.position();
-            byte[] bytes = new byte[size];
-            source.get(bytes, offset, length);
-            bais = new ByteArrayInputStream(bytes);
-        }
-        return format(bais, offset);
+        byte[] bytes = new byte[length];
+        source.get(index, bytes, 0, length);
+        ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
+        return format(bais, index);
     }
 
     /**
-     * The formatter function is called repeatedly to read all of the bytes
-     * in the source and append the output.
+     * The formatter function is called for the ByteBuffer's contents.
      * The source bytes are from the {@code ByteBuffer.position()}
      * to the {@code ByteBuffer.limit()}.
      * The position is not modified.
@@ -464,7 +458,7 @@ public final class HexPrinter {
      * @throws java.io.UncheckedIOException if an I/O error occurs
      */
     public HexPrinter format(ByteBuffer source) {
-        return format(source, source.position(), source.limit());
+        return format(source, source.position(), source.limit() - source.position());
     }
 
     /**
@@ -544,37 +538,36 @@ public final class HexPrinter {
     }
 
     /**
-     * The formatter function is called repeatedly to read the bytes
-     * from the offset for the length and return a String.
-     * The ByteBuffer position and limit are unused and not modified.
+     * The formatter function is called for the range of the ByteBuffer contents
+     * and returned as a string.
+     * The ByteBuffer position is not used and not modified.
      *
      * @param source a ByteBuffer
-     * @param offset the offset in the ByteBuffer
-     * @param length the length in the ByteBuffer
+     * @param index the index in the ByteBuffer, must be non-negative and
+     *              less than {@code limit()}.
+     * @param length the length in the ByteBuffer must be non-negative and
+     *               no larger than {@code source.limit() - index}
      * @return the output as a non-null {@code String}
      * @throws java.io.UncheckedIOException if an I/O error occurs
+     * @throws java.lang.IndexOutOfBoundsException if the preconditions on
+     *          {@code index} and {@code length} do not hold
      */
-    public String toString(ByteBuffer source, int offset, int length) {
+    public String toString(ByteBuffer source, int index, int length) {
         Objects.requireNonNull(source, "ByteBuffer must be non-null");
+        byte[] bytes = new byte[length];
+        source.get(index, bytes, 0, length);
+        ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
         StringBuilder sb = new StringBuilder();
-        ByteArrayInputStream bais;
-        if (source.hasArray() && !source.isReadOnly()) {
-            bais = new ByteArrayInputStream(source.array(), offset, length);
-        } else {
-            byte[] bytes = new byte[length];
-            source.get(bytes, offset, length);
-            bais = new ByteArrayInputStream(bytes);
-        }
         try (AnnotationWriter writer =
-                     new AnnotationWriter(this, bais, offset, sb)) {
+                     new AnnotationWriter(this, bais, index, sb)) {
             writer.flush();
             return sb.toString();
         }
     }
 
     /**
-     * The formatter function is called repeatedly to read all of the bytes
-     * in the source and return a String.
+     * The formatter function is called for the ByteBuffer contents
+     * and returned as a string.
      * The source bytes are from the {@code ByteBuffer.position()}
      * to the {@code ByteBuffer.limit()}.
      * The position is not modified.
@@ -584,7 +577,7 @@ public final class HexPrinter {
      * @throws java.io.UncheckedIOException if an I/O error occurs
      */
     public String toString(ByteBuffer source) {
-        return toString(source, source.position(), source.limit());
+        return toString(source, source.position(), source.limit() - source.position());
     }
 
     /**
@@ -610,11 +603,14 @@ public final class HexPrinter {
      * If the byteFormat is an empty String, there are no byte values in the output.
      *
      * @param byteFormat a format string for each byte
-     * @param bytesCount the maximum number of byte values per line
+     * @param bytesCount the maximum number of byte values per line; greater than zero
      * @return a new HexPrinter
+     * @throws IllegalArgumentException if bytesCount is less than or equal to zero
      */
     public HexPrinter withBytesFormat(String byteFormat, int bytesCount) {
         Objects.requireNonNull(bytesFormat, "bytesFormat");
+        if (bytesCount <= 0)
+            throw new IllegalArgumentException("bytesCount should be greater than zero");
         return new HexPrinter(annoFormatter, offsetFormat, byteFormat, bytesCount,
                 annoDelim, annoWidth, lineSeparator, dest);
     }
@@ -830,18 +826,20 @@ public final class HexPrinter {
     }
 
     /**
-     * Built-in formatters for printable byte, ASCII, UTF-8 and primitive types.
+     * Built-in formatters for printable byte, ASCII byte, UTF-8 and primitive types.
      * Formatters for primitive types and different formatting options
      * can be found by calling {@link #ofPrimitive(Class, String)}.
      */
     public enum Formatters implements Formatter {
         /**
-         * Read a byte and if it is ASCII write it,
-         * otherwise, write its mnemonic or its decimal value.
+         * Read a byte, return the value as a single character string
+         * if it is printable, otherwise return ".".
          */
         PRINTABLE,
         /**
-         * Read a byte, if it is ASCII write it, otherwise write a ".".
+         * Read a byte and return it as a string.
+         * Return the character if it is ASCII, return its mnemonic if it
+         * is a control character, otherwise return its decimal value as a string.
          */
         ASCII,
         /**
@@ -863,10 +861,8 @@ public final class HexPrinter {
         }
 
         /**
-         * Read a byte and write it as ASCII if it is printable,
-         * print its mnemonic if it is a control character,
-         * and print its decimal value otherwise.
-         * A space separator character is appended for control and decimal values.
+         * Read a byte and return it as a single character string if it is printable,
+         * otherwise return ".".
          *
          * @param in  a DataInputStream
          * @param out an Appendable to write to
@@ -874,17 +870,17 @@ public final class HexPrinter {
          */
         static void bytePrintable(DataInputStream in, Appendable out) throws IOException {
             int v = in.readUnsignedByte();
-            if (v < 32) {
-                out.append("\\").append(CONTROL_MNEMONICS[v]);
-            } else if (v < 126 && Character.isDefined(v)) {
+            if (!Character.isISOControl(v) && v < 127) {
                 out.append((char) v);
             } else {
-                out.append("\\").append(Integer.toString(v, 10));
+                out.append('.');
             }
         }
 
         /**
-         * Read a byte and write it as ASCII if it is printable, otherwise print ".".
+         * Read a byte and return it as a string.
+         * Append the byte if it is ASCII, its mnemonic if it
+         * is a control character, and otherwise its decimal value.
          *
          * @param in  a DataInputStream
          * @param out an Appendable to write to
@@ -892,10 +888,12 @@ public final class HexPrinter {
          */
         static void byteASCII(DataInputStream in, Appendable out) throws IOException {
             int v = in.readUnsignedByte();
-            if (Character.isDefined(v)) {
+            if (v < 32) {
+                out.append('\\').append(CONTROL_MNEMONICS[v]);
+            } else if (v < 127) {
                 out.append((char) v);
             } else {
-                out.append('.');
+                out.append('\\').append(Integer.toString(v, 10));
             }
         }
 
@@ -950,6 +948,7 @@ public final class HexPrinter {
         private final transient DataInputStream in;
         private final transient int baseOffset;
         private final transient HexPrinter params;
+        private final transient int bytesSingleWidth;
         private final transient int bytesColWidth;
         private final transient int annoWidth;
         private final transient Appendable dest;
@@ -970,7 +969,8 @@ public final class HexPrinter {
             this.source = new OffsetInputStream(source);
             this.source.mark(1024);
             this.in = new DataInputStream(this.source);
-            this.bytesColWidth = params.bytesCount * String.format(params.bytesFormat, 255).length();
+            this.bytesSingleWidth = String.format(params.bytesFormat, 255).length();
+            this.bytesColWidth = params.bytesCount * bytesSingleWidth;
             this.annoWidth = params.annoWidth;
             this.dest = dest;
         }
@@ -1066,11 +1066,16 @@ public final class HexPrinter {
             int count = source.markedByteCount();
             try {
                 source.reset();
-                long binColOffset = source.byteOffset();
+                int binColOffset = (int)source.byteOffset();
                 while (count > 0 || info.length() > 0) {
-                    dest.append(String.format(params.offsetFormat, binColOffset + baseOffset));
-                    int colWidth = 0;
-                    int byteCount = Math.min(params.bytesCount, count);
+                    int offset = binColOffset + baseOffset; // offset of first byte on the line
+                    dest.append(String.format(params.offsetFormat, offset));
+                    // Compute indent based on offset modulo bytesCount
+                    int colOffset = offset % params.bytesCount;
+                    int colWidth = colOffset * bytesSingleWidth;
+                    dest.append(" ".repeat(colWidth));
+                    // Append the bytes that fit on this line
+                    int byteCount = Math.min(params.bytesCount - colOffset, count);
                     for (int i = 0; i < byteCount; i++) {
                         int b = source.read();
                         if (b == -1)

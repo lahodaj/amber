@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -695,7 +695,7 @@ abstract class MethodHandleImpl {
 
     // Intrinsified by C2. Counters are used during parsing to calculate branch frequencies.
     @Hidden
-    @jdk.internal.HotSpotIntrinsicCandidate
+    @jdk.internal.vm.annotation.IntrinsicCandidate
     static boolean profileBoolean(boolean result, int[] counters) {
         // Profile is int[2] where [0] and [1] correspond to false and true occurrences respectively.
         int idx = result ? 1 : 0;
@@ -710,7 +710,7 @@ abstract class MethodHandleImpl {
 
     // Intrinsified by C2. Returns true if obj is a compile-time constant.
     @Hidden
-    @jdk.internal.HotSpotIntrinsicCandidate
+    @jdk.internal.vm.annotation.IntrinsicCandidate
     static boolean isCompileConstant(Object obj) {
         return false;
     }
@@ -1764,80 +1764,95 @@ abstract class MethodHandleImpl {
             }
 
             @Override
-            public byte[] generateDirectMethodHandleHolderClassBytes(
-                    String className, MethodType[] methodTypes, int[] types) {
-                return GenerateJLIClassesHelper
-                        .generateDirectMethodHandleHolderClassBytes(
-                                className, methodTypes, types);
+            public Map<String, byte[]> generateHolderClasses(Stream<String> traces) {
+                return GenerateJLIClassesHelper.generateHolderClasses(traces);
             }
 
             @Override
-            public byte[] generateDelegatingMethodHandleHolderClassBytes(
-                    String className, MethodType[] methodTypes) {
-                return GenerateJLIClassesHelper
-                        .generateDelegatingMethodHandleHolderClassBytes(
-                                className, methodTypes);
-            }
-
-            @Override
-            public Map.Entry<String, byte[]> generateConcreteBMHClassBytes(
-                    final String types) {
-                return GenerateJLIClassesHelper
-                        .generateConcreteBMHClassBytes(types);
-            }
-
-            @Override
-            public byte[] generateBasicFormsClassBytes(final String className) {
-                return GenerateJLIClassesHelper
-                        .generateBasicFormsClassBytes(className);
-            }
-
-            @Override
-            public byte[] generateInvokersHolderClassBytes(final String className,
-                    MethodType[] invokerMethodTypes,
-                    MethodType[] callSiteMethodTypes) {
-                return GenerateJLIClassesHelper
-                        .generateInvokersHolderClassBytes(className,
-                                invokerMethodTypes, callSiteMethodTypes);
-            }
-
-            @Override
-            public VarHandle memoryAddressViewVarHandle(Class<?> carrier, long alignmentMask,
-                                                        ByteOrder order, long offset, long[] strides) {
+            public VarHandle memoryAccessVarHandle(Class<?> carrier, long alignmentMask,
+                                                   ByteOrder order, long offset, long[] strides) {
                 return VarHandles.makeMemoryAddressViewHandle(carrier, alignmentMask, order, offset, strides);
             }
 
             @Override
             public Class<?> memoryAddressCarrier(VarHandle handle) {
-                return checkMemAccessHandle(handle).carrier();
+                return checkMemoryAccessHandle(handle).carrier();
             }
 
             @Override
             public long memoryAddressAlignmentMask(VarHandle handle) {
-                return checkMemAccessHandle(handle).alignmentMask;
+                return checkMemoryAccessHandle(handle).alignmentMask;
             }
 
             @Override
             public ByteOrder memoryAddressByteOrder(VarHandle handle) {
-                return checkMemAccessHandle(handle).be ?
+                return checkMemoryAccessHandle(handle).be ?
                         ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN;
             }
 
             @Override
             public long memoryAddressOffset(VarHandle handle) {
-                return checkMemAccessHandle(handle).offset;
+                return checkMemoryAccessHandle(handle).offset;
             }
 
             @Override
             public long[] memoryAddressStrides(VarHandle handle) {
-                return checkMemAccessHandle(handle).strides();
+                return checkMemoryAccessHandle(handle).strides();
             }
 
-            private VarHandleMemoryAddressBase checkMemAccessHandle(VarHandle handle) {
-                if (!(handle instanceof VarHandleMemoryAddressBase)) {
+            @Override
+            public boolean isMemoryAccessVarHandle(VarHandle handle) {
+                return asMemoryAccessVarHandle(handle) != null;
+            }
+
+            @Override
+            public VarHandle filterValue(VarHandle target, MethodHandle filterToTarget, MethodHandle filterFromTarget) {
+                return VarHandles.filterValue(target, filterToTarget, filterFromTarget);
+            }
+
+            @Override
+            public VarHandle filterCoordinates(VarHandle target, int pos, MethodHandle... filters) {
+                return VarHandles.filterCoordinates(target, pos, filters);
+            }
+
+            @Override
+            public VarHandle dropCoordinates(VarHandle target, int pos, Class<?>... valueTypes) {
+                return VarHandles.dropCoordinates(target, pos, valueTypes);
+            }
+
+            @Override
+            public VarHandle permuteCoordinates(VarHandle target, List<Class<?>> newCoordinates, int... reorder) {
+                return VarHandles.permuteCoordinates(target, newCoordinates, reorder);
+            }
+
+            @Override
+            public VarHandle collectCoordinates(VarHandle target, int pos, MethodHandle filter) {
+                return VarHandles.collectCoordinates(target, pos, filter);
+            }
+
+            @Override
+            public VarHandle insertCoordinates(VarHandle target, int pos, Object... values) {
+                return VarHandles.insertCoordinates(target, pos, values);
+            }
+
+            private MemoryAccessVarHandleBase asMemoryAccessVarHandle(VarHandle handle) {
+                if (handle instanceof MemoryAccessVarHandleBase) {
+                    return (MemoryAccessVarHandleBase)handle;
+                } else if (handle.target() instanceof MemoryAccessVarHandleBase) {
+                    // skip first adaptation, since we have to step over MemoryAddressProxy
+                    // see JDK-8237349
+                    return (MemoryAccessVarHandleBase)handle.target();
+                } else {
+                    return null;
+                }
+            }
+
+            private MemoryAccessVarHandleBase checkMemoryAccessHandle(VarHandle handle) {
+                MemoryAccessVarHandleBase base = asMemoryAccessVarHandle(handle);
+                if (base == null) {
                     throw new IllegalArgumentException("Not a memory access varhandle: " + handle);
                 }
-                return (VarHandleMemoryAddressBase) handle;
+                return base;
             }
         });
     }

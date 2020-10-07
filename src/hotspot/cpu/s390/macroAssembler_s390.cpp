@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2016, 2019, SAP SE. All rights reserved.
+ * Copyright (c) 2016, 2019 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1163,7 +1163,7 @@ void MacroAssembler::load_const_32to64(Register t, int64_t x, bool sign_extend) 
 // Load narrow oop constant, no decompression.
 void MacroAssembler::load_narrow_oop(Register t, narrowOop a) {
   assert(UseCompressedOops, "must be on to call this method");
-  load_const_32to64(t, a, false /*sign_extend*/);
+  load_const_32to64(t, CompressedOops::narrow_oop_value(a), false /*sign_extend*/);
 }
 
 // Load narrow klass constant, compression required.
@@ -1181,7 +1181,7 @@ void MacroAssembler::load_narrow_klass(Register t, Klass* k) {
 void MacroAssembler::compare_immediate_narrow_oop(Register oop1, narrowOop oop2) {
   assert(UseCompressedOops, "must be on to call this method");
 
-  Assembler::z_clfi(oop1, oop2);
+  Assembler::z_clfi(oop1, CompressedOops::narrow_oop_value(oop2));
 }
 
 // Compare narrow oop in reg with narrow oop constant, no decompression.
@@ -1273,9 +1273,7 @@ int MacroAssembler::patch_compare_immediate_32(address pos, int64_t np) {
 // The passed ptr must NOT be in compressed format!
 int MacroAssembler::patch_load_narrow_oop(address pos, oop o) {
   assert(UseCompressedOops, "Can only patch compressed oops");
-
-  narrowOop no = CompressedOops::encode(o);
-  return patch_load_const_32to64(pos, no);
+  return patch_load_const_32to64(pos, CompressedOops::narrow_oop_value(o));
 }
 
 // Patching the immediate value of CPU version dependent load_narrow_klass sequence.
@@ -1291,9 +1289,7 @@ int MacroAssembler::patch_load_narrow_klass(address pos, Klass* k) {
 // The passed ptr must NOT be in compressed format!
 int MacroAssembler::patch_compare_immediate_narrow_oop(address pos, oop o) {
   assert(UseCompressedOops, "Can only patch compressed oops");
-
-  narrowOop no = CompressedOops::encode(o);
-  return patch_compare_immediate_32(pos, no);
+  return patch_compare_immediate_32(pos, CompressedOops::narrow_oop_value(o));
 }
 
 // Patching the immediate value of CPU version dependent compare_immediate_narrow_klass sequence.
@@ -3357,6 +3353,14 @@ void MacroAssembler::compiler_fast_lock_object(Register oop, Register box, Regis
 
   // Load markWord from oop into mark.
   z_lg(displacedHeader, 0, oop);
+
+  if (DiagnoseSyncOnPrimitiveWrappers != 0) {
+    load_klass(Z_R1_scratch, oop);
+    z_l(Z_R1_scratch, Address(Z_R1_scratch, Klass::access_flags_offset()));
+    assert((JVM_ACC_IS_BOX_CLASS & 0xFFFF) == 0, "or change following instruction");
+    z_nilh(Z_R1_scratch, JVM_ACC_IS_BOX_CLASS >> 16);
+    z_brne(done);
+  }
 
   if (try_bias) {
     biased_locking_enter(oop, displacedHeader, temp, Z_R0, done);

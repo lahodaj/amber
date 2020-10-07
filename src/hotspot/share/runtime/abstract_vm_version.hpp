@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,7 @@ typedef enum {
   KVM,
   VMWare,
   HyperV,
+  HyperVRole,
   PowerVM, // on AIX or Linux ppc64(le)
   PowerFullPartitionMode, // on Linux ppc64(le)
   PowerKVM
@@ -118,13 +119,9 @@ class Abstract_VM_Version: AllStatic {
   static const char* jdk_debug_level();
   static const char* printable_jdk_debug_level();
 
-  static uint64_t features() {
-    return _features;
-  }
-
-  static const char* features_string() {
-    return _features_string;
-  }
+  static uint64_t features()           { return _features; }
+  static const char* features_string() { return _features_string; }
+  static void insert_features_names(char* buf, size_t buflen, const char* features_names[]);
 
   static VirtualizationType get_detected_virtualization() {
     return _detected_virtualization;

@@ -1,5 +1,3 @@
-
-
 /*
  * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -26,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "jvm.h"
+#include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "code/codeCache.hpp"
@@ -217,6 +216,8 @@ static bool eliminate_allocations(JavaThread* thread, int exec_mode, CompiledMet
 }
 
 static void eliminate_locks(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool realloc_failures) {
+  assert(thread == Thread::current(), "should be");
+  HandleMark hm(thread);
 #ifndef PRODUCT
   bool first = true;
 #endif
@@ -595,16 +596,9 @@ void Deoptimization::cleanup_deopt_info(JavaThread *thread,
 
 
   if (JvmtiExport::can_pop_frame()) {
-#ifndef CC_INTERP
     // Regardless of whether we entered this routine with the pending
     // popframe condition bit set, we should always clear it now
     thread->clear_popframe_condition();
-#else
-    // C++ interpreter will clear has_pending_popframe when it enters
-    // with method_resume. For deopt_resume2 we clear it now.
-    if (thread->popframe_forcing_deopt_reexecution())
-        thread->clear_popframe_condition();
-#endif /* CC_INTERP */
   }
 
   // unpack_frames() is called at the end of the deoptimization handler
@@ -643,7 +637,7 @@ JRT_LEAF(BasicType, Deoptimization::unpack_frames(JavaThread* thread, int exec_m
   // but makes the entry a little slower. There is however a little dance we have to
   // do in debug mode to get around the NoHandleMark code in the JRT_LEAF macro
   ResetNoHandleMark rnhm; // No-op in release/product versions
-  HandleMark hm;
+  HandleMark hm(thread);
 
   frame stub_frame = thread->last_frame();
 
@@ -663,8 +657,16 @@ JRT_LEAF(BasicType, Deoptimization::unpack_frames(JavaThread* thread, int exec_m
 
   UnrollBlock* info = array->unroll_block();
 
+  // We set the last_Java frame. But the stack isn't really parsable here. So we
+  // clear it to make sure JFR understands not to try and walk stacks from events
+  // in here.
+  intptr_t* sp = thread->frame_anchor()->last_Java_sp();
+  thread->frame_anchor()->set_last_Java_sp(NULL);
+
   // Unpack the interpreter frames and any adapter frame (c2 only) we might create.
   array->unpack_to_stack(stub_frame, exec_mode, info->caller_actual_parameters());
+
+  thread->frame_anchor()->set_last_Java_sp(sp);
 
   BasicType bt = info->return_type();
 
@@ -801,7 +803,6 @@ JRT_LEAF(BasicType, Deoptimization::unpack_frames(JavaThread* thread, int exec_m
   }
 #endif /* !PRODUCT */
 
-
   return bt;
 JRT_END
 
@@ -809,7 +810,7 @@ class DeoptimizeMarkedClosure : public HandshakeClosure {
  public:
   DeoptimizeMarkedClosure() : HandshakeClosure("Deoptimize") {}
   void do_thread(Thread* thread) {
-    JavaThread* jt = (JavaThread*)thread;
+    JavaThread* jt = thread->as_Java_thread();
     jt->deoptimize_marked_methods();
   }
 };
@@ -1082,23 +1083,9 @@ static void byte_array_put(typeArrayOop obj, intptr_t val, int index, int byte_c
     case 4:
       *((jint *) check_alignment_get_addr(obj, index, 4)) = (jint) *((jint *) &val);
       break;
-    case 8: {
-#ifdef _LP64
-        jlong res = (jlong) *((jlong *) &val);
-#else
-#ifdef SPARC
-      // For SPARC we have to swap high and low words.
-      jlong v = (jlong) *((jlong *) &val);
-      jlong res = 0;
-      res |= ((v & (jlong) 0xffffffff) << 32);
-      res |= ((v >> 32) & (jlong) 0xffffffff);
-#else
-      jlong res = (jlong) *((jlong *) &val);
-#endif // SPARC
-#endif
-      *((jlong *) check_alignment_get_addr(obj, index, 8)) = res;
+    case 8:
+      *((jlong *) check_alignment_get_addr(obj, index, 8)) = (jlong) *((jlong *) &val);
       break;
-  }
     default:
       ShouldNotReachHere();
   }
@@ -1121,12 +1108,7 @@ void Deoptimization::reassign_type_array_elements(frame* fr, RegisterMap* reg_ma
 #ifdef _LP64
       jlong res = (jlong)low->get_int();
 #else
-#ifdef SPARC
-      // For SPARC we have to swap high and low words.
-      jlong res = jlong_from((jint)low->get_int(), (jint)value->get_int());
-#else
       jlong res = jlong_from((jint)value->get_int(), (jint)low->get_int());
-#endif //SPARC
 #endif
       obj->long_at_put(index, res);
       break;
@@ -1155,12 +1137,7 @@ void Deoptimization::reassign_type_array_elements(frame* fr, RegisterMap* reg_ma
   #ifdef _LP64
         jlong res = (jlong)low->get_int();
   #else
-  #ifdef SPARC
-        // For SPARC we have to swap high and low words.
-        jlong res = jlong_from((jint)low->get_int(), (jint)value->get_int());
-  #else
         jlong res = jlong_from((jint)value->get_int(), (jint)low->get_int());
-  #endif //SPARC
   #endif
         obj->int_at_put(index, (jint)*((jint*)&res));
         obj->int_at_put(++index, (jint)*(((jint*)&res) + 1));
@@ -1305,12 +1282,7 @@ static int reassign_fields_by_klass(InstanceKlass* klass, frame* fr, RegisterMap
 #ifdef _LP64
         jlong res = (jlong)low->get_int();
 #else
-#ifdef SPARC
-        // For SPARC we have to swap high and low words.
-        jlong res = jlong_from((jint)low->get_int(), (jint)value->get_int());
-#else
         jlong res = jlong_from((jint)value->get_int(), (jint)low->get_int());
-#endif //SPARC
 #endif
         obj->long_field_put(offset, res);
         break;
@@ -1563,6 +1535,9 @@ void Deoptimization::revoke_from_deopt_handler(JavaThread* thread, frame fr, Reg
   if (!UseBiasedLocking) {
     return;
   }
+  assert(thread == Thread::current(), "should be");
+  ResourceMark rm(thread);
+  HandleMark hm(thread);
   GrowableArray<Handle>* objects_to_revoke = new GrowableArray<Handle>();
   get_monitors_from_stack(objects_to_revoke, thread, fr, map);
 
@@ -1682,6 +1657,7 @@ Deoptimization::get_method_data(JavaThread* thread, const methodHandle& m,
     // that simply means we won't have an MDO to update.
     Method::build_interpreter_method_data(m, THREAD);
     if (HAS_PENDING_EXCEPTION) {
+      // Only metaspace OOM is expected. No Java code executed.
       assert((PENDING_EXCEPTION->is_a(SystemDictionary::OutOfMemoryError_klass())), "we expect only an OOM error here");
       CLEAR_PENDING_EXCEPTION;
     }
@@ -1700,34 +1676,28 @@ void Deoptimization::load_class_by_index(const constantPoolHandle& constant_pool
   // So this whole "class index" feature should probably be removed.
 
   if (constant_pool->tag_at(index).is_unresolved_klass()) {
-    Klass* tk = constant_pool->klass_at_ignore_error(index, CHECK);
+    Klass* tk = constant_pool->klass_at_ignore_error(index, THREAD);
+    if (HAS_PENDING_EXCEPTION) {
+      // Exception happened during classloading. We ignore the exception here, since it
+      // is going to be rethrown since the current activation is going to be deoptimized and
+      // the interpreter will re-execute the bytecode.
+      // Do not clear probable Async Exceptions.
+      CLEAR_PENDING_NONASYNC_EXCEPTION;
+      // Class loading called java code which may have caused a stack
+      // overflow. If the exception was thrown right before the return
+      // to the runtime the stack is no longer guarded. Reguard the
+      // stack otherwise if we return to the uncommon trap blob and the
+      // stack bang causes a stack overflow we crash.
+      JavaThread* jt = THREAD->as_Java_thread();
+      bool guard_pages_enabled = jt->stack_guards_enabled();
+      if (!guard_pages_enabled) guard_pages_enabled = jt->reguard_stack();
+      assert(guard_pages_enabled, "stack banging in uncommon trap blob may cause crash");
+    }
     return;
   }
 
   assert(!constant_pool->tag_at(index).is_symbol(),
          "no symbolic names here, please");
-}
-
-
-void Deoptimization::load_class_by_index(const constantPoolHandle& constant_pool, int index) {
-  EXCEPTION_MARK;
-  load_class_by_index(constant_pool, index, THREAD);
-  if (HAS_PENDING_EXCEPTION) {
-    // Exception happened during classloading. We ignore the exception here, since it
-    // is going to be rethrown since the current activation is going to be deoptimized and
-    // the interpreter will re-execute the bytecode.
-    CLEAR_PENDING_EXCEPTION;
-    // Class loading called java code which may have caused a stack
-    // overflow. If the exception was thrown right before the return
-    // to the runtime the stack is no longer guarded. Reguard the
-    // stack otherwise if we return to the uncommon trap blob and the
-    // stack bang causes a stack overflow we crash.
-    assert(THREAD->is_Java_thread(), "only a java thread can be here");
-    JavaThread* thread = (JavaThread*)THREAD;
-    bool guard_pages_enabled = thread->stack_guards_enabled();
-    if (!guard_pages_enabled) guard_pages_enabled = thread->reguard_stack();
-    assert(guard_pages_enabled, "stack banging in uncommon trap blob may cause crash");
-  }
 }
 
 #if INCLUDE_JFR
@@ -1794,7 +1764,7 @@ static void post_deoptimization_event(CompiledMethod* nm,
 #endif // INCLUDE_JFR
 
 JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* thread, jint trap_request)) {
-  HandleMark hm;
+  HandleMark hm(thread);
 
   // uncommon_trap() is called at the beginning of the uncommon trap
   // handler. Note this fact before we start generating temporary frames
@@ -1991,7 +1961,7 @@ JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* thread, jint tra
     // Load class if necessary
     if (unloaded_class_index >= 0) {
       constantPoolHandle constants(THREAD, trap_method->constants());
-      load_class_by_index(constants, unloaded_class_index);
+      load_class_by_index(constants, unloaded_class_index, THREAD);
     }
 
     // Flush the nmethod if necessary and desirable.

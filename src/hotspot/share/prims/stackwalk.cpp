@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -79,7 +79,6 @@ void JavaFrameStream::next() { _vfst.next();}
 BaseFrameStream* BaseFrameStream::from_current(JavaThread* thread, jlong magic,
                                                objArrayHandle frames_array)
 {
-  assert(thread != NULL && thread->is_Java_thread(), "");
   oop m1 = frames_array->obj_at(magic_pos);
   if (m1 != thread->threadObj()) return NULL;
   if (magic == 0L)                    return NULL;
@@ -288,6 +287,9 @@ void LiveFrameStream::fill_live_stackframe(Handle stackFrame,
                                            const methodHandle& method, TRAPS) {
   fill_stackframe(stackFrame, method, CHECK);
   if (_jvf != NULL) {
+    ResourceMark rm(THREAD);
+    HandleMark hm(THREAD);
+
     StackValueCollection* locals = _jvf->locals();
     StackValueCollection* expressions = _jvf->expressions();
     GrowableArray<MonitorInfo*>* monitors = _jvf->monitors();
@@ -335,7 +337,7 @@ oop StackWalk::walk(Handle stackStream, jlong mode,
                     objArrayHandle frames_array,
                     TRAPS) {
   ResourceMark rm(THREAD);
-  JavaThread* jt = (JavaThread*)THREAD;
+  JavaThread* jt = THREAD->as_Java_thread();
   log_debug(stackwalk)("Start walking: mode " JLONG_FORMAT " skip %d frames batch size %d",
                        mode, skip_frames, frame_count);
 
@@ -455,7 +457,7 @@ jint StackWalk::fetchNextBatch(Handle stackStream, jlong mode, jlong magic,
                                objArrayHandle frames_array,
                                TRAPS)
 {
-  JavaThread* jt = (JavaThread*)THREAD;
+  JavaThread* jt = THREAD->as_Java_thread();
   BaseFrameStream* existing_stream = BaseFrameStream::from_current(jt, magic, frames_array);
   if (existing_stream == NULL) {
     THROW_MSG_(vmSymbols::java_lang_InternalError(), "doStackWalk: corrupted buffers", 0L);

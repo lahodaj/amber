@@ -92,8 +92,8 @@ void DefNewGeneration::FastKeepAliveClosure::do_oop(narrowOop* p) { DefNewGenera
 
 DefNewGeneration::FastEvacuateFollowersClosure::
 FastEvacuateFollowersClosure(SerialHeap* heap,
-                             FastScanClosure* cur,
-                             FastScanClosure* older) :
+                             DefNewScanClosure* cur,
+                             DefNewYoungerGenClosure* older) :
   _heap(heap), _scan_cur_or_nonheap(cur), _scan_older(older)
 {
 }
@@ -103,18 +103,6 @@ void DefNewGeneration::FastEvacuateFollowersClosure::do_void() {
     _heap->oop_since_save_marks_iterate(_scan_cur_or_nonheap, _scan_older);
   } while (!_heap->no_allocs_since_save_marks());
   guarantee(_heap->young_gen()->promo_failure_scan_is_complete(), "Failed to finish scan");
-}
-
-ScanClosure::ScanClosure(DefNewGeneration* g, bool gc_barrier) :
-    OopsInClassLoaderDataOrGenClosure(g), _g(g), _gc_barrier(gc_barrier)
-{
-  _boundary = _g->reserved().end();
-}
-
-FastScanClosure::FastScanClosure(DefNewGeneration* g, bool gc_barrier) :
-    OopsInClassLoaderDataOrGenClosure(g), _g(g), _gc_barrier(gc_barrier)
-{
-  _boundary = _g->reserved().end();
 }
 
 void CLDScanClosure::do_cld(ClassLoaderData* cld) {
@@ -430,10 +418,6 @@ void DefNewGeneration::compute_new_size() {
       }
 }
 
-void DefNewGeneration::younger_refs_iterate(OopsInGenClosure* cl, uint n_threads) {
-  assert(false, "NYI -- are you sure you want to call this?");
-}
-
 
 size_t DefNewGeneration::capacity() const {
   return eden()->capacity()
@@ -580,16 +564,16 @@ void DefNewGeneration::collect(bool   full,
   assert(heap->no_allocs_since_save_marks(),
          "save marks have not been newly set.");
 
-  FastScanClosure fsc_with_no_gc_barrier(this, false);
-  FastScanClosure fsc_with_gc_barrier(this, true);
+  DefNewScanClosure       scan_closure(this);
+  DefNewYoungerGenClosure younger_gen_closure(this, _old_gen);
 
-  CLDScanClosure cld_scan_closure(&fsc_with_no_gc_barrier,
+  CLDScanClosure cld_scan_closure(&scan_closure,
                                   heap->rem_set()->cld_rem_set()->accumulate_modified_oops());
 
-  set_promo_failure_scan_stack_closure(&fsc_with_no_gc_barrier);
+  set_promo_failure_scan_stack_closure(&scan_closure);
   FastEvacuateFollowersClosure evacuate_followers(heap,
-                                                  &fsc_with_no_gc_barrier,
-                                                  &fsc_with_gc_barrier);
+                                                  &scan_closure,
+                                                  &younger_gen_closure);
 
   assert(heap->no_allocs_since_save_marks(),
          "save marks have not been newly set.");
@@ -601,8 +585,8 @@ void DefNewGeneration::collect(bool   full,
     StrongRootsScope srs(0);
 
     heap->young_process_roots(&srs,
-                              &fsc_with_no_gc_barrier,
-                              &fsc_with_gc_barrier,
+                              &scan_closure,
+                              &younger_gen_closure,
                               &cld_scan_closure);
   }
 
@@ -680,12 +664,6 @@ void DefNewGeneration::collect(bool   full,
   from()->set_concurrent_iteration_safe_limit(from()->top());
   to()->set_concurrent_iteration_safe_limit(to()->top());
 
-  // We need to use a monotonically non-decreasing time in ms
-  // or we will see time-warp warnings and os::javaTimeMillis()
-  // does not guarantee monotonicity.
-  jlong now = os::javaTimeNanos() / NANOSECS_PER_MILLISEC;
-  update_time_of_last_gc(now);
-
   heap->trace_heap_after_gc(&gc_tracer);
 
   _gc_timer->register_gc_end();
@@ -715,7 +693,7 @@ void DefNewGeneration::handle_promotion_failure(oop old) {
 
   _promotion_failed = true;
   _promotion_failed_info.register_copy_failure(old->size());
-  _preserved_marks_set.get()->push_if_necessary(old, old->mark_raw());
+  _preserved_marks_set.get()->push_if_necessary(old, old->mark());
   // forward to self
   old->forward_to(old);
 
@@ -953,11 +931,7 @@ HeapWord* DefNewGeneration::allocate(size_t word_size, bool is_tlab) {
   // Note that since DefNewGeneration supports lock-free allocation, we
   // have to use it here, as well.
   HeapWord* result = eden()->par_allocate(word_size);
-  if (result != NULL) {
-    if (_old_gen != NULL) {
-      _old_gen->sample_eden_chunk();
-    }
-  } else {
+  if (result == NULL) {
     // If the eden is full and the last collection bailed out, we are running
     // out of heap space, and we try to allocate the from-space, too.
     // allocate_from_space can't be inlined because that would introduce a
@@ -969,11 +943,7 @@ HeapWord* DefNewGeneration::allocate(size_t word_size, bool is_tlab) {
 
 HeapWord* DefNewGeneration::par_allocate(size_t word_size,
                                          bool is_tlab) {
-  HeapWord* res = eden()->par_allocate(word_size);
-  if (_old_gen != NULL) {
-    _old_gen->sample_eden_chunk();
-  }
-  return res;
+  return eden()->par_allocate(word_size);
 }
 
 size_t DefNewGeneration::tlab_capacity() const {

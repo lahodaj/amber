@@ -45,18 +45,18 @@ void initJvmLauncher() {
     const tstring launcherPath = SysInfo::getProcessModulePath();
 
     // Launcher should be in "Contents/MacOS" subdirectory of app image.
-    // However, don't strip "Contents" folder from launcher path, so that app
-    // image root directory would be set to "Contents" subfolder of app image.
-    const tstring appImageRoot = FileUtils::dirname(
-            FileUtils::dirname(launcherPath));
+    const tstring appImageRoot = FileUtils::dirname(FileUtils::dirname(
+            FileUtils::dirname(launcherPath)));
 
     // Create JVM launcher and save in global variable.
     jvmLauncher = AppLauncher()
         .setImageRoot(appImageRoot)
         .addJvmLibName(_T("Contents/Home/lib/libjli.dylib"))
-        .setAppDir(FileUtils::mkpath() << appImageRoot << _T("app"))
+        // add backup - older version such as JDK11 have it in jli sub-dir
+        .addJvmLibName(_T("Contents/Home/lib/jli/libjli.dylib"))
+        .setAppDir(FileUtils::mkpath() << appImageRoot << _T("Contents/app"))
         .setDefaultRuntimePath(FileUtils::mkpath() << appImageRoot
-                << _T("runtime"))
+                << _T("Contents/runtime"))
         .createJvmLauncher();
 
     // Kick start JVM launching. The function wouldn't return!
@@ -67,7 +67,6 @@ void initJvmLauncher() {
 
 
 int main(int argc, char *argv[]) {
-    setlocale(LC_ALL, "en_US.utf8");
     if (jvmLauncher) {
         // This is the call from the thread spawned by JVM.
         // Skip initialization phase as we have done this already in the first

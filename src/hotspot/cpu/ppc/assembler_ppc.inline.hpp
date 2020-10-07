@@ -287,6 +287,11 @@ inline void Assembler::testbitdi(ConditionRegister cr, Register a, Register s, i
   }
 }
 
+// Byte reverse instructions (introduced with Power10)
+inline void Assembler::brh(Register a, Register s) { emit_int32(BRH_OPCODE | rta(a) | rs(s)); }
+inline void Assembler::brw(Register a, Register s) { emit_int32(BRW_OPCODE | rta(a) | rs(s)); }
+inline void Assembler::brd(Register a, Register s) { emit_int32(BRD_OPCODE | rta(a) | rs(s)); }
+
 // rotate instructions
 inline void Assembler::rotldi( Register a, Register s, int n) { Assembler::rldicl(a, s, n, 0); }
 inline void Assembler::rotrdi( Register a, Register s, int n) { Assembler::rldicl(a, s, 64-n, 0); }
@@ -337,7 +342,7 @@ inline void Assembler::ldu(  Register d, int si16,    Register s1) { assert(d !=
 inline void Assembler::ldbrx( Register d, Register s1, Register s2) { emit_int32(LDBRX_OPCODE | rt(d) | ra0mem(s1) | rb(s2));}
 
 inline void Assembler::ld_ptr(Register d, int b, Register s1) { ld(d, b, s1); }
-DEBUG_ONLY(inline void Assembler::ld_ptr(Register d, ByteSize b, Register s1) { ld(d, in_bytes(b), s1); })
+inline void Assembler::ld_ptr(Register d, ByteSize b, Register s1) { ld(d, in_bytes(b), s1); }
 
 //  PPC 1, section 3.3.3 Fixed-Point Store Instructions
 inline void Assembler::stwx( Register d, Register s1, Register s2) { emit_int32(STWX_OPCODE | rs(d) | ra0mem(s1) | rb(s2));}
@@ -361,7 +366,7 @@ inline void Assembler::stdux(Register s, Register a,  Register b)  { emit_int32(
 inline void Assembler::stdbrx( Register d, Register s1, Register s2) { emit_int32(STDBRX_OPCODE | rs(d) | ra0mem(s1) | rb(s2));}
 
 inline void Assembler::st_ptr(Register d, int b, Register s1) { std(d, b, s1); }
-DEBUG_ONLY(inline void Assembler::st_ptr(Register d, ByteSize b, Register s1) { std(d, in_bytes(b), s1); })
+inline void Assembler::st_ptr(Register d, ByteSize b, Register s1) { std(d, in_bytes(b), s1); }
 
 // PPC 1, section 3.3.13 Move To/From System Register Instructions
 inline void Assembler::mtlr( Register s1)         { emit_int32(MTLR_OPCODE  | rs(s1)); }

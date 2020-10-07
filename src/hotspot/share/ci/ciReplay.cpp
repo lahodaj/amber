@@ -38,7 +38,9 @@
 #include "oops/method.inline.hpp"
 #include "oops/oop.inline.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/java.hpp"
 #include "utilities/copy.hpp"
 #include "utilities/macros.hpp"
 #include "utilities/utf8.hpp"
@@ -627,7 +629,7 @@ class CompileReplay : public StackObj {
     // method to be rewritten (number of arguments at a call for
     // instance)
     method->method_holder()->link_class(CHECK);
-    // methodOopDesc::build_interpreter_method_data(method, CHECK);
+    // Method::build_interpreter_method_data(method, CHECK);
     {
       // Grab a lock here to prevent multiple
       // MethodData*s from being created.
@@ -1108,8 +1110,8 @@ void* ciReplay::load_inline_data(ciMethod* method, int entry_bci, int comp_level
 }
 
 int ciReplay::replay_impl(TRAPS) {
-  HandleMark hm;
-  ResourceMark rm;
+  HandleMark hm(THREAD);
+  ResourceMark rm(THREAD);
 
   if (ReplaySuppressInitializers > 2) {
     // ReplaySuppressInitializers > 2 means that we want to allow

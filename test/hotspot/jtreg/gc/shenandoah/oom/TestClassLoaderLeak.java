@@ -25,8 +25,7 @@
 /**
  * @test TestClassLoaderLeak
  * @summary Test OOME in due to classloader leak
- * @key gc
- * @requires vm.gc.Shenandoah & !vm.graal.enabled
+ * @requires vm.gc.Shenandoah
  * @library /test/lib
  * @run driver TestClassLoaderLeak
  */
@@ -126,7 +125,7 @@ public class TestClassLoaderLeak {
         }
 
         String[][][] modeHeuristics = new String[][][] {
-             {{"normal"},  {"adaptive", "compact", "static", "aggressive"}},
+             {{"satb"},    {"adaptive", "compact", "static", "aggressive"}},
              {{"iu"},      {"adaptive", "aggressive"}},
              {{"passive"}, {"passive"}}
         };
