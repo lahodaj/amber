@@ -49,6 +49,8 @@ import static java.util.Objects.requireNonNull;
  */
 public class SwitchBootstraps {
 
+    private SwitchBootstraps() {}
+
     // Shared INIT_HOOK for all switch call sites; looks the target method up in a map
     private static final MethodHandle TYPE_INIT_HOOK;
     private static final MethodHandle TYPE_SWITCH_METHOD;
