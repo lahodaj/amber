@@ -242,6 +242,9 @@ public interface Tree {
         DECONSTRUCTION_PATTERN(DeconstructionPatternTree.class),
 
         ARRAY_PATTERN(ArrayPatternTree.class),
+        AND_PATTERN(AndPatternTree.class),
+        TRUE_GUARD_PATTERN(GuardPatternTree.class),
+        FALSE_GUARD_PATTERN(GuardPatternTree.class),
 
         /**
          * Used for instances of {@link PrimitiveTypeTree}.

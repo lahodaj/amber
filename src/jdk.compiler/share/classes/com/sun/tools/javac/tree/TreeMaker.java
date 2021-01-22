@@ -494,6 +494,18 @@ public class TreeMaker implements JCTree.Factory {
         return tree;
     }
 
+    public JCAndPattern AndPattern(JCPattern leftPattern, JCPattern rightPattern) {
+        JCAndPattern tree = new JCAndPattern(leftPattern, rightPattern);
+        tree.pos = pos;
+        return tree;
+    }
+
+    public JCGuardPattern GuardPattern(Tag kind, JCExpression expr) {
+        JCGuardPattern tree = new JCGuardPattern(kind, expr);
+        tree.pos = pos;
+        return tree;
+    }
+
     public JCArrayAccess Indexed(JCExpression indexed, JCExpression index) {
         JCArrayAccess tree = new JCArrayAccess(indexed, index);
         tree.pos = pos;

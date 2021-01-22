@@ -66,6 +66,7 @@ import com.sun.tools.javac.code.Type;
 import static com.sun.tools.javac.code.TypeTag.BOT;
 import com.sun.tools.javac.jvm.Target;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCAndPattern;
 import com.sun.tools.javac.tree.JCTree.JCArrayPattern;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCClassDecl;
@@ -155,7 +156,7 @@ public class TransPatterns extends TreeTranslator {
 
     @Override
     public void visitTypeTest(JCInstanceOf tree) {
-        if (tree.pattern.hasTag(Tag.BINDINGPATTERN) || tree.pattern.hasTag(Tag.DECONSTRUCTIONPATTERN) || tree.pattern.hasTag(Tag.ARRAYPATTERN)) {
+        if (tree.pattern.hasTag(Tag.BINDINGPATTERN) || tree.pattern.hasTag(Tag.DECONSTRUCTIONPATTERN) || tree.pattern.hasTag(Tag.ARRAYPATTERN) || tree.pattern.hasTag(Tag.ANDPATTERN)) {
             //E instanceof T N
             //E instanceof T(PATT1, PATT2, ...)
             //=>
@@ -168,27 +169,32 @@ public class TransPatterns extends TreeTranslator {
                     tempType,
                     currentOwnerSym);
             JCExpression translatedExpr = translate(tree.expr);
-            Type castTargetType;
-            //TODO: use rule switch (when boot JDK is 14):
-            switch (tree.pattern.getTag()) {
-                case BINDINGPATTERN:
-                    castTargetType = ((JCBindingPattern)tree.pattern).var.sym.type;
-                    break;
-                case DECONSTRUCTIONPATTERN:
-                    castTargetType = ((JCDeconstructionPattern)tree.pattern).type;
-                    break;
-                case ARRAYPATTERN:
-                    castTargetType = ((JCArrayPattern)tree.pattern).type;
-                    break;
-                default:
-                    throw new AssertionError("Unexpected pattern type: " + tree.pattern.getTag());
+
+            if (tree.pattern.hasTag(Tag.ANDPATTERN)) {
+                result = preparePatternExtractor(tree, tree.getPattern(), temp, syms.objectType);
+            } else {
+                Type castTargetType;
+                //TODO: use rule switch (when boot JDK is 14):
+                switch (tree.pattern.getTag()) {
+                    case BINDINGPATTERN:
+                        castTargetType = ((JCBindingPattern)tree.pattern).var.sym.type;
+                        break;
+                    case DECONSTRUCTIONPATTERN:
+                        castTargetType = ((JCDeconstructionPattern)tree.pattern).type;
+                        break;
+                    case ARRAYPATTERN:
+                        castTargetType = ((JCArrayPattern)tree.pattern).type;
+                        break;
+                    default:
+                        throw new AssertionError("Unexpected pattern type: " + tree.pattern.getTag());
+                }
+
+                castTargetType = types.boxedTypeOrType(types.erasure(castTargetType));
+
+                result = makeTypeTest(make.at(tree.pos).Ident(temp), make.Type(castTargetType));
+                result = makeBinary(Tag.AND, (JCExpression)result,
+                                             preparePatternExtractor(tree, tree.getPattern(), temp, castTargetType));
             }
-
-            castTargetType = types.boxedTypeOrType(types.erasure(castTargetType));
-
-            result = makeTypeTest(make.at(tree.pos).Ident(temp), make.Type(castTargetType));
-            result = makeBinary(Tag.AND, (JCExpression)result,
-                                         preparePatternExtractor(tree, tree.getPattern(), temp, castTargetType));
             result = make.at(tree.pos).LetExpr(make.VarDef(temp, translatedExpr),
                                                (JCExpression)result).setType(syms.booleanType);
             ((LetExpr) result).needsCond = true;
@@ -321,6 +327,51 @@ public class TransPatterns extends TreeTranslator {
                 nestedPatterns = nestedPatterns.tail;
             }
             return test;
+        } else if (patt.hasTag(Tag.ANDPATTERN)) {
+            //XXX: type test already done, finish handling of deconstruction patterns ("T(PATT1, PATT2, ...)")
+            //=>
+            //<PATT1-handling> && <PATT2-handling> && ...
+            JCAndPattern apatt = (JCAndPattern) patt;
+            List<? extends Type> components = List.of(apatt.leftPattern.type, apatt.rightPattern.type);
+            List<? extends JCPattern> nestedPatterns = List.of(apatt.leftPattern, apatt.rightPattern);
+            JCExpression test = null;
+            while (components.nonEmpty() && nestedPatterns.nonEmpty()) {
+                //PATTn for record component COMPn of type Tn;
+                //PATTn is a type test pattern or a deconstruction pattern:
+                //=>
+                //(let Tn $c$COMPn = ((T) N$temp).COMPn(); <PATTn extractor>)
+                //or
+                //(let Tn $c$COMPn = ((T) N$temp).COMPn(); $c$COMPn != null && <PATTn extractor>)
+                //or
+                //(let Tn $c$COMPn = ((T) N$temp).COMPn(); $c$COMPn instanceof T' && <PATTn extractor>)
+                JCPattern nested = nestedPatterns.head;
+                JCExpression extracted =
+                        preparePatternExtractor(tree, nested, temp, nested.type);
+                JCExpression extraTest = null;
+                if (!nested.hasTag(Tag.TRUEGUARDPATTERN) && !nested.hasTag(Tag.FALSEGUARDPATTERN)) {
+                    if (!types.isAssignable(temp.type, nested.type)) {
+                        extraTest = makeTypeTest(make.Ident(temp),
+                                                 make.Type(nested.type));
+                    } else if (nested.type.isReference()) {
+                        extraTest = makeBinary(Tag.NE, make.Ident(temp), makeNull());
+                    }
+                    if (extraTest != null) {
+                        extracted = makeBinary(Tag.AND, extraTest, extracted);
+                    }
+                }
+                if (test == null) {
+                    test = extracted;
+                } else {
+                    test = makeBinary(Tag.AND, test, extracted);
+                }
+                components = components.tail;
+                nestedPatterns = nestedPatterns.tail;
+            }
+            Assert.check(components.isEmpty() == nestedPatterns.isEmpty());
+            return test != null ? test : make.Literal(true);
+        } else if (patt.hasTag(Tag.TRUEGUARDPATTERN) || patt.hasTag(Tag.FALSEGUARDPATTERN)) {
+            JCTree.JCGuardPattern gpatt = (JCTree.JCGuardPattern) patt;
+            return patt.hasTag(Tag.TRUEGUARDPATTERN) ? gpatt.expr : makeUnary(Tag.NOT, gpatt.expr);
         } else {
             throw new IllegalStateException();
         }
@@ -525,6 +576,17 @@ public class TransPatterns extends TreeTranslator {
     JCBinary makeBinary(JCTree.Tag optag, JCExpression lhs, JCExpression rhs) {
         JCBinary tree = make.Binary(optag, lhs, rhs);
         tree.operator = operators.resolveBinary(tree, optag, lhs.type, rhs.type);
+        tree.type = tree.operator.type.getReturnType();
+        return tree;
+    }
+
+    /** Make an attributed unary expression.
+     *  @param optag    The operators tree tag.
+     *  @param arg      The operator's argument.
+     */
+    JCTree.JCUnary makeUnary(JCTree.Tag optag, JCExpression arg) {
+        JCTree.JCUnary tree = make.Unary(optag, arg);
+        tree.operator = operators.resolveUnary(tree, optag, arg.type);
         tree.type = tree.operator.type.getReturnType();
         return tree;
     }

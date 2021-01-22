@@ -763,33 +763,48 @@ public class JavacParser implements Parser {
     /** parses patterns.
      */
 
-    public JCPattern parsePattern() {
+    public JCPattern parsePattern(JCPattern leftIfAny) {
+        JCPattern pattern;
         int pos = token.pos;
         if (token.kind == IDENTIFIER && token.name() == names.var) {
             //TODO: modifiers
             nextToken();
             JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), null, null));
-            return toP(F.at(pos).BindingPattern(var));
+            pattern = toP(F.at(pos).BindingPattern(var));
         } else if (token.kind == LBRACE) {
-            return parseArrayPatternRest(pos, null);
+            pattern = parseArrayPatternRest(pos, null);
+        } else if (token.kind == TRUE || token.kind == FALSE) {
+            Tag kind = token.kind == TRUE ? TRUEGUARDPATTERN : FALSEGUARDPATTERN;
+            nextToken();
+            JCExpression expr = parExpression();
+            pattern = toP(F.at(pos).GuardPattern(kind, expr));
         } else {
             JCExpression e = term(EXPR | TYPE | NOLAMBDA | NOINVOCATION);
             if (token.kind == LPAREN) {
                 ListBuffer<JCPattern> nested = new ListBuffer<>();
                 do {
                     nextToken();
-                    JCPattern nestedPattern = parsePattern();
+                    JCPattern nestedPattern = parsePattern(null);
                     nested.append(nestedPattern);
                 } while (token.kind == COMMA);
                 accept(RPAREN);
-                return toP(F.at(pos).DeconstructionPattern(e, nested.toList()));
+                pattern = toP(F.at(pos).DeconstructionPattern(e, nested.toList()));
             } else if (token.kind == LBRACE) {
-                return parseArrayPatternRest(pos, e);
+                pattern = parseArrayPatternRest(pos, e);
             } else {
                 JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
-                return toP(F.at(pos).BindingPattern(var));
+                pattern = toP(F.at(pos).BindingPattern(var));
             }
         }
+        if (leftIfAny != null) {
+            pattern = toP(F.at(pos).AndPattern(leftIfAny, pattern));
+        }
+        if (token.kind == AMP) {
+            //TODO: disambiguation
+            nextToken();
+            pattern = parsePattern(pattern);
+        }
+        return pattern;
     }
 
     private JCPattern parseArrayPatternRest(int pos, JCExpression type) {
@@ -808,7 +823,7 @@ public class JavacParser implements Parser {
                 }
                 break;
             }
-            JCPattern nestedPattern = parsePattern();
+            JCPattern nestedPattern = parsePattern(null);
             nested.append(nestedPattern);
         } while (token.kind == COMMA);
         accept(RBRACE);
@@ -998,23 +1013,30 @@ public class JavacParser implements Parser {
                 int typePos = token.pos;
                 JCExpression type = unannotatedType(false);
                 JCTree pattern;
-                if (token.kind == IDENTIFIER) {
-                    checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
-                    JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), type, null));
-                    pattern = toP(F.at(patternPos).BindingPattern(var));
-                } else if (token.kind == LPAREN) {
-                    checkSourceLevel(Feature.DECONSTRUCTION_PATTERNS);
-                    ListBuffer<JCPattern> nested = new ListBuffer<>();
-                    do {
+                if (token.kind == IDENTIFIER || token.kind == LPAREN || token.kind == LBRACE) {
+                    if (token.kind == IDENTIFIER) {
+                        checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                        JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), type, null));
+                        pattern = toP(F.at(patternPos).BindingPattern(var));
+                    } else if (token.kind == LPAREN) {
+                        checkSourceLevel(Feature.DECONSTRUCTION_PATTERNS);
+                        ListBuffer<JCPattern> nested = new ListBuffer<>();
+                        do {
+                            nextToken();
+                            JCPattern nestedPattern = parsePattern(null);
+                            nested.append(nestedPattern);
+                        } while (token.kind == COMMA);
+                        accept(RPAREN);
+                        pattern = toP(F.at(type).DeconstructionPattern(type, nested.toList()));
+                    } else /*if (token.kind == LBRACE)*/ {
+                        checkSourceLevel(Feature.DECONSTRUCTION_PATTERNS);
+                        pattern = parseArrayPatternRest(pos, type);
+                    }
+                    if (token.kind == AMP) {
+                        //TODO: disambiguate patterns vs expressions
                         nextToken();
-                        JCPattern nestedPattern = parsePattern();
-                        nested.append(nestedPattern);
-                    } while (token.kind == COMMA);
-                    accept(RPAREN);
-                    pattern = toP(F.at(type).DeconstructionPattern(type, nested.toList()));
-                } else if (token.kind == LBRACE) {
-                    checkSourceLevel(Feature.DECONSTRUCTION_PATTERNS);
-                    pattern = parseArrayPatternRest(pos, type);
+                        pattern = parsePattern((JCPattern) pattern);
+                    }
                 } else {
                     checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
                     if (mods.annotations.nonEmpty()) {

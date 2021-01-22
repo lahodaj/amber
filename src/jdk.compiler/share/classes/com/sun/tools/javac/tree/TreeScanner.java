@@ -319,6 +319,17 @@ public class TreeScanner extends Visitor {
         scan(that.nested);
     }
 
+    @Override
+    public void visitAndPattern(JCAndPattern that) {
+        scan(that.leftPattern);
+        scan(that.rightPattern);
+    }
+
+    @Override
+    public void visitGuardPattern(JCGuardPattern that) {
+        scan(that.expr);
+    }
+
     public void visitIndexed(JCArrayAccess tree) {
         scan(tree.indexed);
         scan(tree.index);

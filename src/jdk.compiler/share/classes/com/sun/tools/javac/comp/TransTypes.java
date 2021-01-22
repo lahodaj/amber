@@ -597,6 +597,19 @@ public class TransTypes extends TreeTranslator {
         result = tree;
     }
 
+    @Override
+    public void visitAndPattern(JCAndPattern tree) {
+        tree.leftPattern = translate(tree.leftPattern, null);
+        tree.rightPattern = translate(tree.rightPattern, null);
+        result = tree;
+    }
+
+    @Override
+    public void visitGuardPattern(JCGuardPattern tree) {
+        tree.expr = translate(tree.expr, syms.booleanType);
+        result = tree;
+    }
+
     public void visitSynchronized(JCSynchronized tree) {
         tree.lock = translate(tree.lock, erasure(tree.lock.type));
         tree.body = translate(tree.body);
