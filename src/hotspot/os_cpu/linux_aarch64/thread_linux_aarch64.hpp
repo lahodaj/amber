@@ -27,15 +27,6 @@
 #define OS_CPU_LINUX_AARCH64_THREAD_LINUX_AARCH64_HPP
 
  private:
-#ifdef ASSERT
-  // spill stack holds N callee-save registers at each Java call and
-  // grows downwards towards limit
-  // we need limit to check we have space for a spill and base so we
-  // can identify all live spill frames at GC (eventually)
-  address          _spill_stack;
-  address          _spill_stack_base;
-  address          _spill_stack_limit;
-#endif // ASSERT
 
   void pd_initialize() {
     _anchor.clear();
@@ -46,6 +37,10 @@
  public:
   static ByteSize last_Java_fp_offset()          {
     return byte_offset_of(JavaThread, _anchor) + JavaFrameAnchor::last_Java_fp_offset();
+  }
+
+  static ByteSize saved_fp_address_offset() {
+    return byte_offset_of(JavaThread, _anchor) + JavaFrameAnchor::saved_fp_address_offset();
   }
 
   bool pd_get_top_frame_for_signal_handler(frame* fr_addr, void* ucontext,

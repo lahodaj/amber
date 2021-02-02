@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "jvm_io.h"
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
 #include "memory/resourceArea.hpp"
@@ -30,6 +31,7 @@
 #include "runtime/handshake.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/osThread.hpp"
+#include "runtime/stackWatermarkSet.hpp"
 #include "runtime/task.hpp"
 #include "runtime/thread.hpp"
 #include "runtime/vmThread.hpp"
@@ -405,6 +407,10 @@ HandshakeOperation* HandshakeState::pop() {
 };
 
 void HandshakeState::process_by_self() {
+  assert(Thread::current() == _handshakee, "should call from _handshakee");
+  assert(!_handshakee->is_terminated(), "should not be a terminated thread");
+  assert(_handshakee->thread_state() != _thread_blocked, "should not be in a blocked state");
+  assert(_handshakee->thread_state() != _thread_in_native, "should not be in native");
   ThreadInVMForHandshake tivm(_handshakee);
   {
     NoSafepointVerifier nsv;
@@ -413,14 +419,9 @@ void HandshakeState::process_by_self() {
 }
 
 void HandshakeState::process_self_inner() {
-  assert(Thread::current() == _handshakee, "should call from _handshakee");
-  assert(!_handshakee->is_terminated(), "should not be a terminated thread");
-  assert(_handshakee->thread_state() != _thread_blocked, "should not be in a blocked state");
-  assert(_handshakee->thread_state() != _thread_in_native, "should not be in native");
-
   while (should_process()) {
     HandleMark hm(_handshakee);
-    CautiouslyPreserveExceptionMark pem(_handshakee);
+    PreserveExceptionMark pem(_handshakee);
     MutexLocker ml(&_lock, Mutex::_no_safepoint_check_flag);
     HandshakeOperation* op = pop_for_self();
     if (op != NULL) {
@@ -518,6 +519,10 @@ HandshakeState::ProcessResult HandshakeState::try_process(HandshakeOperation* ma
 
       if (op == match_op) {
         pr_ret = HandshakeState::_succeeded;
+      }
+
+      if (!_handshakee->is_terminated()) {
+        StackWatermarkSet::start_processing(_handshakee, StackWatermarkKind::gc);
       }
 
       _active_handshaker = current_thread;
