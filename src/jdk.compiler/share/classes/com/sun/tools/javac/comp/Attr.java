@@ -1718,8 +1718,8 @@ public class Attr extends JCTree.Visitor {
                 }
                 addVars(c.stats, switchEnv.info.scope);
 
-                c.completesNormally = flow.aliveAfter(caseEnv, c, make);
-                prevBindings = c.completesNormally ? currentBindings : null;
+                boolean completesNormally = c.caseKind == CaseTree.CaseKind.STATEMENT ? flow.aliveAfter(caseEnv, c, make) : false;
+                prevBindings = completesNormally ? currentBindings : null;
             }
         } finally {
             switchEnv.info.scope.leave();

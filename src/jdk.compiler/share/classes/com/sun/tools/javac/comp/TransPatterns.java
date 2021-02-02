@@ -74,6 +74,7 @@ import com.sun.tools.javac.jvm.PoolConstant.LoadableConstant;
 import com.sun.tools.javac.jvm.Target;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
+import com.sun.tools.javac.tree.JCTree.JCBreak;
 import com.sun.tools.javac.tree.JCTree.JCCase;
 import com.sun.tools.javac.tree.JCTree.JCDoWhileLoop;
 import com.sun.tools.javac.tree.JCTree.JCExpressionPattern;
@@ -280,7 +281,14 @@ public class TransPatterns extends TreeTranslator {
                 translatedLabels.add(make.ExpressionPattern(make.Literal(value)));
             }
             c.pats = translatedLabels.toList();
-            previousCompletesNormally = c.completesNormally;
+            if (c.caseKind == CaseTree.CaseKind.STATEMENT) {
+                previousCompletesNormally = c.completesNormally;
+            } else {
+                previousCompletesNormally = false;
+                JCBreak brk = make.Break(null);
+                brk.target = tree;
+                c.stats = c.stats.append(brk);
+            }
         }
         
         if (tree.hasTag(Tag.SWITCH)) {

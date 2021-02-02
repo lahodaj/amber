@@ -21,6 +21,7 @@
  * questions.
  */
 
+import java.util.Objects;
 import java.util.function.Function;
 
 /*
@@ -41,6 +42,8 @@ public class Switches {
         run(this::testBooleanSwitchExpression);
         assertFalse(testNullSwitch(null));
         assertTrue(testNullSwitch(""));
+        runArrayTypeTest(this::testArrayTypeStatement);
+        runArrayTypeTest(this::testArrayTypeExpression);
     }
 
     void run(Function<Object, Integer> mapper) {
@@ -57,6 +60,13 @@ public class Switches {
         } catch (NullPointerException ex) {
             //OK
         }
+    }
+
+    void runArrayTypeTest(Function<Object, String> mapper) {
+        assertEquals("arr0", mapper.apply(new int[0]));
+        assertEquals("str6", mapper.apply("string"));
+        assertEquals("i1", mapper.apply(1));
+        assertEquals("", mapper.apply(1.0));
     }
 
     int typeTestPatternSwitchTest(Object o) {
@@ -105,8 +115,34 @@ public class Switches {
         };
     }
 
+    String testArrayTypeStatement(Object o) {
+        String res;
+        switch (o) {
+            case Integer i -> res = "i" + i;
+            case int[] arr -> res = "arr" + arr.length;
+            case String str -> res = "str" + str.length();
+            default -> res = "";
+        }
+        return res;
+    }
+
+    String testArrayTypeExpression(Object o) {
+        return switch (o) {
+            case Integer i -> "i" + i;
+            case int[] arr -> "arr" + arr.length;
+            case String str -> "str" + str.length();
+            default -> "";
+        };
+    }
+
     void assertEquals(int expected, int actual) {
         if (expected != actual) {
+            throw new AssertionError("Expected: " + expected + ", but got: " + actual);
+        }
+    }
+
+    void assertEquals(String expected, String actual) {
+        if (!Objects.equals(expected, actual)) {
             throw new AssertionError("Expected: " + expected + ", but got: " + actual);
         }
     }
