@@ -1676,8 +1676,7 @@ public class Attr extends JCTree.Visitor {
                         if (pat.hasTag(EXPRESSIONPATTERN)) {
                             JCExpression expr = ((JCExpressionPattern) pat).value;
                             if (TreeInfo.isNull(expr)) {
-                                log.error(expr.pos(),
-                                          Errors.SwitchNullNotAllowed);
+                                attribExpr(expr, switchEnv, seltype);
                             } else if (enumSwitch) {
                                 Symbol sym = enumConstant(expr, seltype);
                                 if (sym == null) {

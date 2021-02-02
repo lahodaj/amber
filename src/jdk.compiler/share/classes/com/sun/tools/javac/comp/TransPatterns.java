@@ -82,6 +82,7 @@ import com.sun.tools.javac.tree.JCTree.JCLambda;
 import com.sun.tools.javac.tree.JCTree.JCPattern;
 import com.sun.tools.javac.tree.JCTree.JCStatement;
 import com.sun.tools.javac.tree.JCTree.LetExpr;
+import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.List;
 import java.util.HashMap;
 
@@ -226,7 +227,8 @@ public class TransPatterns extends TreeTranslator {
                     names.fromString(tree.pos + target.syntheticNameChar() + "temp"),
                     seltype,
                     currentMethodSym); //XXX:owner - verify field inits!
-            statements.append(make.at(tree.pos).VarDef(temp, attr.makeNullCheck(selector)));
+            boolean hasNullCache = cases.stream().flatMap(c -> c.pats.stream()).anyMatch(p -> p.hasTag(Tag.EXPRESSIONPATTERN) && TreeInfo.isNull(((JCExpressionPattern) p).value));
+            statements.append(make.at(tree.pos).VarDef(temp, !hasNullCache ? attr.makeNullCheck(selector) : selector));
             List<Type> staticArgTypes = List.of(syms.methodHandleLookupType,
                                                 syms.stringType,
                                                 syms.methodTypeType,
@@ -234,7 +236,7 @@ public class TransPatterns extends TreeTranslator {
                                                                   List.of(new WildcardType(syms.objectType, BoundKind.UNBOUND,
                                                                                            syms.boundClass)),
                                                                   syms.classType.tsym)));
-            LoadableConstant[] staticArgValues = cases.stream().flatMap(c -> c.pats.stream()).map(p -> (JCBindingPattern) p).map(p -> p.var.sym.type).toArray(s -> new LoadableConstant[s]);
+            LoadableConstant[] staticArgValues = cases.stream().flatMap(c -> c.pats.stream()).filter(p -> p.hasTag(Tag.BINDINGPATTERN)).map(p -> (JCBindingPattern) p).map(p -> p.var.sym.type).toArray(s -> new LoadableConstant[s]);
 
             Symbol bsm = rs.resolveInternalMethod(tree.pos(), env, syms.switchBootstrapsType,
                     names.fromString("typeSwitch"), staticArgTypes, List.nil());
@@ -261,13 +263,21 @@ public class TransPatterns extends TreeTranslator {
 
         for (var c : cases) {
             if (c.pats.size() == 1 && !previousCompletesNormally) {
-                VarSymbol binding = ((JCBindingPattern) c.pats.head).var.sym;
                 c.stats = translate(c.stats);
-                c.stats = c.stats.prepend(make.VarDef(binding, make.TypeCast(binding.type, make.Ident(temp))));
+                if (c.pats.head.hasTag(Tag.BINDINGPATTERN)) {
+                    VarSymbol binding = ((JCBindingPattern) c.pats.head).var.sym;
+                    c.stats = c.stats.prepend(make.VarDef(binding, make.TypeCast(binding.type, make.Ident(temp))));
+                }
             }
             ListBuffer<JCPattern> translatedLabels = new ListBuffer<>();
             for (var p : c.pats) {
-                translatedLabels.add(make.ExpressionPattern(make.Literal(i++)));
+                int value;
+                if (p.hasTag(Tag.BINDINGPATTERN)) {
+                    value = i++;
+                } else {
+                    value = -1;
+                }
+                translatedLabels.add(make.ExpressionPattern(make.Literal(value)));
             }
             c.pats = translatedLabels.toList();
             previousCompletesNormally = c.completesNormally;
@@ -285,7 +295,6 @@ public class TransPatterns extends TreeTranslator {
             result = r;
         }
         return ;
-        //TODO: add null (-1) handling!
         }
         if (tree.hasTag(Tag.SWITCH)) {
             super.visitSwitch((JCSwitch) tree);

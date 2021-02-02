@@ -39,6 +39,8 @@ public class Switches {
         run(this::typeTestPatternSwitchTest);
         run(this::typeTestPatternSwitchExpressionTest);
         run(this::testBooleanSwitchExpression);
+        assertFalse(testNullSwitch(null));
+        assertTrue(testNullSwitch(""));
     }
 
     void run(Function<Object, Integer> mapper) {
@@ -96,9 +98,28 @@ public class Switches {
         return typeTestPatternSwitchTest(o);
     }
 
+    boolean testNullSwitch(Object o) {
+        return switch (o) {
+            case null -> false;
+            default -> true;
+        };
+    }
+
     void assertEquals(int expected, int actual) {
         if (expected != actual) {
             throw new AssertionError("Expected: " + expected + ", but got: " + actual);
+        }
+    }
+
+    void assertTrue(boolean actual) {
+        if (!actual) {
+            throw new AssertionError("Expected: true, but got false");
+        }
+    }
+
+    void assertFalse(boolean actual) {
+        if (actual) {
+            throw new AssertionError("Expected: false, but got true");
         }
     }
 }
