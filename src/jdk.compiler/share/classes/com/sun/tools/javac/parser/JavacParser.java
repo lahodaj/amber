@@ -763,7 +763,7 @@ public class JavacParser implements Parser {
     /** parses patterns.
      */
 
-    public JCPattern parsePattern(JCPattern leftIfAny) {
+    public JCPattern parsePattern(JCPattern leftIfAny, boolean inInstanceOf) {
         JCPattern pattern;
         int pos = token.pos;
         if (token.kind == IDENTIFIER && token.name() == names.var) {
@@ -784,7 +784,7 @@ public class JavacParser implements Parser {
                 ListBuffer<JCPattern> nested = new ListBuffer<>();
                 do {
                     nextToken();
-                    JCPattern nestedPattern = parsePattern(null);
+                    JCPattern nestedPattern = parsePattern(null, false);
                     nested.append(nestedPattern);
                 } while (token.kind == COMMA);
                 accept(RPAREN);
@@ -799,10 +799,9 @@ public class JavacParser implements Parser {
         if (leftIfAny != null) {
             pattern = toP(F.at(pos).AndPattern(leftIfAny, pattern));
         }
-        if (token.kind == AMP) {
-            //TODO: disambiguation
+        if (token.kind == AMP && (!inInstanceOf || analyzeAmp(1) == AmpResult.PATTERN)) {
             nextToken();
-            pattern = parsePattern(pattern);
+            pattern = parsePattern(pattern, inInstanceOf);
         }
         return pattern;
     }
@@ -823,11 +822,32 @@ public class JavacParser implements Parser {
                 }
                 break;
             }
-            JCPattern nestedPattern = parsePattern(null);
+            JCPattern nestedPattern = parsePattern(null, false);
             nested.append(nestedPattern);
         } while (token.kind == COMMA);
         accept(RBRACE);
         return toP(F.at(pos).ArrayPattern(type, nested.toList(), orMore));
+    }
+
+    public AmpResult analyzeAmp(int offset) {
+        return switch (S.token(offset).kind) {
+            case TRUE, FALSE ->
+                S.token(offset + 1).kind == LPAREN ? AmpResult.PATTERN : AmpResult.EXPRESSION;
+            case IDENTIFIER ->
+                switch (S.token(offset + 1).kind) {
+                    case IDENTIFIER -> AmpResult.PATTERN;
+                    case LPAREN -> analyzeAmp(offset + 2);
+                    case LBRACKET -> S.token(offset + 2).kind == RBRACKET ? AmpResult.PATTERN : AmpResult.EXPRESSION;
+                    default -> AmpResult.EXPRESSION;
+                };
+            case LBRACE -> AmpResult.PATTERN; //error recovery - expect erroneous array pattern
+            default -> AmpResult.EXPRESSION;
+        };
+    }
+
+    enum AmpResult {
+        EXPRESSION,
+        PATTERN;
     }
 
     /**
@@ -1023,7 +1043,7 @@ public class JavacParser implements Parser {
                         ListBuffer<JCPattern> nested = new ListBuffer<>();
                         do {
                             nextToken();
-                            JCPattern nestedPattern = parsePattern(null);
+                            JCPattern nestedPattern = parsePattern(null, true);
                             nested.append(nestedPattern);
                         } while (token.kind == COMMA);
                         accept(RPAREN);
@@ -1032,10 +1052,9 @@ public class JavacParser implements Parser {
                         checkSourceLevel(Feature.DECONSTRUCTION_PATTERNS);
                         pattern = parseArrayPatternRest(pos, type);
                     }
-                    if (token.kind == AMP) {
-                        //TODO: disambiguate patterns vs expressions
+                    if (token.kind == AMP && analyzeAmp(1) == AmpResult.PATTERN) {
                         nextToken();
-                        pattern = parsePattern((JCPattern) pattern);
+                        pattern = parsePattern((JCPattern) pattern, true);
                     }
                 } else {
                     checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
