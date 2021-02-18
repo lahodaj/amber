@@ -498,6 +498,21 @@ public class TreeCopier<P> implements TreeVisitor<JCTree,P> {
     }
 
     @DefinedBy(Api.COMPILER_TREE)
+    public JCTree visitGuardPattern(GuardPatternTree node, P p) {
+        JCGuardPattern t = (JCGuardPattern) node;
+        JCExpression expr = copy(t.expr, p);
+        return M.at(t.pos).GuardPattern(t.kind, expr);
+    }
+
+    @DefinedBy(Api.COMPILER_TREE)
+    public JCTree visitAndPattern(AndPatternTree node, P p) {
+        JCAndPattern t = (JCAndPattern) node;
+        JCPattern left = copy(t.leftPattern, p);
+        JCPattern right = copy(t.rightPattern, p);
+        return M.at(t.pos).AndPattern(left, right);
+    }
+
+    @DefinedBy(Api.COMPILER_TREE)
     public JCTree visitExpressionPattern(ExpressionPatternTree node, P p) {
         JCExpressionPattern t = (JCExpressionPattern) node;
         JCExpression value = copy(t.value, p);

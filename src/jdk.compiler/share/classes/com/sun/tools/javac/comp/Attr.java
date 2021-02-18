@@ -4039,6 +4039,33 @@ public class Attr extends JCTree.Visitor {
         attribTree(tree.value, env, resultInfo);
     }
 
+    @Override
+    public void visitAndPattern(JCAndPattern tree) {
+        ListBuffer<BindingSymbol> outBindings = new ListBuffer<>();
+        attribExpr(tree.leftPattern, env);
+        outBindings.addAll(matchBindings.bindingsWhenTrue);
+        Env<AttrContext> bodyEnv = bindingEnv(env, matchBindings.bindingsWhenTrue);
+        try {
+            attribExpr(tree.rightPattern, env);
+        } finally {
+            bodyEnv.info.scope.leave();
+        }
+        outBindings.addAll(matchBindings.bindingsWhenTrue);
+        if (tree.rightPattern.type != Type.noType) {
+            result = tree.type = types.makeIntersectionType(List.of(tree.leftPattern.type, tree.rightPattern.type));
+        } else {
+            result = tree.type = tree.leftPattern.type;
+        }
+        matchBindings = new MatchBindings(outBindings.toList(), List.nil());
+    }
+
+    @Override
+    public void visitGuardPattern(JCGuardPattern tree) {
+        attribExpr(tree.expr, env, syms.booleanType);
+        result = tree.type = Type.noType;
+        //propagate bindings from expression
+    }
+
     public void visitIndexed(JCArrayAccess tree) {
         Type owntype = types.createErrorType(tree.type);
         Type atype = attribExpr(tree.indexed, env);

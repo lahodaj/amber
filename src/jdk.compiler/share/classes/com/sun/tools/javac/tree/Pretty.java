@@ -867,7 +867,11 @@ public class Pretty extends JCTree.Visitor {
                 align();
             } else {
                 print(" -> ");
-                printStat(tree.stats.head);
+                if (tree.stats.size() == 1) {
+                    printStat(tree.stats.head);
+                } else {
+                    printBlock(tree.stats);
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -906,6 +910,30 @@ public class Pretty extends JCTree.Visitor {
     public void visitExpressionPattern(JCExpressionPattern patt) {
         try {
             printExpr(patt.value);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
+    public void visitAndPattern(JCAndPattern patt) {
+        try {
+            printExpr(patt.leftPattern);
+            print(" & ");
+            printExpr(patt.rightPattern);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
+    public void visitGuardPattern(JCGuardPattern patt) {
+        try {
+            if (patt.kind == TRUEGUARDPATTERN) {
+                print("true(");
+            }
+            printExpr(patt.expr);
+            print(")");
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

@@ -241,6 +241,9 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
          */
         BINDINGPATTERN,
         EXPRESSIONPATTERN,
+        ANDPATTERN,
+        TRUEGUARDPATTERN,
+        FALSEGUARDPATTERN,
 
         /** Indexed array expressions, of type Indexed.
          */
@@ -2274,6 +2277,85 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
 
     }
 
+    public static class JCAndPattern extends JCPattern
+            implements AndPatternTree {
+        public JCPattern leftPattern;
+        public JCPattern rightPattern;
+
+        public JCAndPattern(JCPattern leftPattern, JCPattern rightPattern) {
+            this.leftPattern = leftPattern;
+            this.rightPattern = rightPattern;
+        }
+
+        @Override @DefinedBy(Api.COMPILER_TREE)
+        public PatternTree getLeftPattern() {
+            return leftPattern;
+        }
+
+        @Override @DefinedBy(Api.COMPILER_TREE)
+        public PatternTree getRightPattern() {
+            return rightPattern;
+        }
+
+        @Override
+        public void accept(Visitor v) {
+            v.visitAndPattern(this);
+        }
+
+        @DefinedBy(Api.COMPILER_TREE)
+        public Kind getKind() {
+            return Kind.AND_PATTERN;
+        }
+
+        @Override
+        @DefinedBy(Api.COMPILER_TREE)
+        public <R, D> R accept(TreeVisitor<R, D> v, D d) {
+            return v.visitAndPattern(this, d);
+        }
+
+        @Override
+        public Tag getTag() {
+            return ANDPATTERN;
+        }
+    }
+
+    public static class JCGuardPattern extends JCPattern
+            implements GuardPatternTree {
+        public Tag kind;
+        public JCExpression expr;
+
+        public JCGuardPattern(Tag kind, JCExpression expr) {
+            this.kind = kind;
+            this.expr = expr;
+        }
+
+        @Override @DefinedBy(Api.COMPILER_TREE)
+        public ExpressionTree getExpression() {
+            return expr;
+        }
+
+        @Override
+        public void accept(Visitor v) {
+            v.visitGuardPattern(this);
+        }
+
+        @DefinedBy(Api.COMPILER_TREE)
+        public Kind getKind() {
+            return kind == TRUEGUARDPATTERN ? Kind.TRUE_GUARD_PATTERN : Kind.FALSE_GUARD_PATTERN;
+        }
+
+        @Override
+        @DefinedBy(Api.COMPILER_TREE)
+        public <R, D> R accept(TreeVisitor<R, D> v, D d) {
+            return v.visitGuardPattern(this, d);
+        }
+
+        @Override
+        public Tag getTag() {
+            return kind;
+        }
+    }
+
     /**
      * An array selection
      */
@@ -3316,6 +3398,8 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public void visitTypeTest(JCInstanceOf that)         { visitTree(that); }
         public void visitBindingPattern(JCBindingPattern that) { visitTree(that); }
         public void visitExpressionPattern(JCExpressionPattern that) { visitTree(that); }
+        public void visitAndPattern(JCAndPattern that) { visitTree(that); }
+        public void visitGuardPattern(JCGuardPattern that) { visitTree(that); }
         public void visitIndexed(JCArrayAccess that)         { visitTree(that); }
         public void visitSelect(JCFieldAccess that)          { visitTree(that); }
         public void visitReference(JCMemberReference that)   { visitTree(that); }

@@ -1268,6 +1268,7 @@ public class Gen extends JCTree.Visitor {
     private void handleSwitch(JCTree swtch, JCExpression selector, List<JCCase> cases) {
         int limit = code.nextreg;
         Assert.check(!selector.type.hasTag(CLASS));
+        int switchStart = code.entryPoint();
         int startpcCrt = genCrt ? code.curCP() : 0;
         Assert.check(code.isStatementStart());
         Item sel = genExpr(selector, syms.intType);
@@ -1369,6 +1370,13 @@ public class Gen extends JCTree.Visitor {
 
                 // Generate code for the statements in this case.
                 genStats(c.stats, switchEnv, CRT_FLOW_TARGET);
+            }
+
+            if (switchEnv.info.cont != null) {
+                System.err.println("continue-switch:");
+                //TODO: fall-through from the last case:
+                code.resolve(switchEnv.info.cont);
+                code.resolve(code.branch(goto_), switchStart);
             }
 
             // Resolve all breaks.

@@ -63,7 +63,7 @@ public class SwitchBootstraps {
             TYPE_INIT_HOOK = LOOKUP.findStatic(SwitchBootstraps.class, "typeInitHook",
                                                   MethodType.methodType(MethodHandle.class, CallSite.class));
             TYPE_SWITCH_METHOD = LOOKUP.findVirtual(TypeSwitchCallSite.class, "doSwitch",
-                                                    MethodType.methodType(int.class, Object.class));
+                                                    MethodType.methodType(int.class, Object.class, int.class));
         }
         catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
@@ -106,7 +106,7 @@ public class SwitchBootstraps {
                                       String invocationName,
                                       MethodType invocationType,
                                       Class<?>... types) throws Throwable {
-        if (invocationType.parameterCount() != 1
+        if (invocationType.parameterCount() != 2
             || (!invocationType.returnType().equals(int.class))
             || invocationType.parameterType(0).isPrimitive())
             throw new IllegalArgumentException("Illegal invocation type " + invocationType);
@@ -131,13 +131,13 @@ public class SwitchBootstraps {
             this.types = types;
         }
 
-        int doSwitch(Object target) {
+        int doSwitch(Object target, int startIndex) {
             if (target == null)
                 return -1;
 
             // Dumbest possible strategy
             Class<?> targetClass = target.getClass();
-            for (int i = 0; i < types.length; i++) {
+            for (int i = startIndex; i < types.length; i++) {
                 Class<?> c = types[i];
                 if (c.isAssignableFrom(targetClass))
                     return i;

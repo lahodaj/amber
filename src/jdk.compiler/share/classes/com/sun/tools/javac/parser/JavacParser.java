@@ -758,6 +758,54 @@ public class JavacParser implements Parser {
         return term(EXPR);
     }
 
+
+    /** parses patterns.
+     */
+
+    public JCPattern parsePattern(JCPattern leftIfAny, boolean inInstanceOf) {
+        JCPattern pattern;
+        int pos = token.pos;
+        if (token.kind == TRUE || token.kind == FALSE) {
+            Tag kind = token.kind == TRUE ? TRUEGUARDPATTERN : FALSEGUARDPATTERN;
+            nextToken();
+            JCExpression expr = parExpression();
+            pattern = toP(F.at(pos).GuardPattern(kind, expr));
+        } else {
+            JCExpression e = term(EXPR | TYPE | NOLAMBDA/* | NOINVOCATION*/);
+            JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
+            pattern = toP(F.at(pos).BindingPattern(var));
+        }
+        if (leftIfAny != null) {
+            pattern = toP(F.at(pos).AndPattern(leftIfAny, pattern));
+        }
+        if (token.kind == AMP && (!inInstanceOf || analyzeAmp(1) == AmpResult.PATTERN)) {
+            nextToken();
+            pattern = parsePattern(pattern, inInstanceOf);
+        }
+        return pattern;
+    }
+
+    public AmpResult analyzeAmp(int offset) {
+        return switch (S.token(offset).kind) {
+            case TRUE, FALSE ->
+                S.token(offset + 1).kind == LPAREN ? AmpResult.PATTERN : AmpResult.EXPRESSION;
+            case IDENTIFIER ->
+                switch (S.token(offset + 1).kind) {
+                    case IDENTIFIER -> AmpResult.PATTERN;
+                    case LPAREN -> analyzeAmp(offset + 2);
+                    case LBRACKET -> S.token(offset + 2).kind == RBRACKET ? AmpResult.PATTERN : AmpResult.EXPRESSION;
+                    default -> AmpResult.EXPRESSION;
+                };
+            case LBRACE -> AmpResult.PATTERN; //error recovery - expect erroneous array pattern
+            default -> AmpResult.EXPRESSION;
+        };
+    }
+
+    enum AmpResult {
+        EXPRESSION,
+        PATTERN;
+    }
+
     /**
      * parses (optional) type annotations followed by a type. If the
      * annotations are present before the type and are not consumed during array
@@ -945,6 +993,10 @@ public class JavacParser implements Parser {
                     checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
                     JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), type, null));
                     pattern = toP(F.at(patternPos).BindingPattern(var));
+                    if (token.kind == AMP && analyzeAmp(1) == AmpResult.PATTERN) {
+                        nextToken();
+                        pattern = parsePattern((JCPattern) pattern, true);
+                    }
                 } else {
                     checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
                     if (mods.annotations.nonEmpty()) {
@@ -1468,13 +1520,18 @@ public class JavacParser implements Parser {
         } else {
             accept(CASE);
             while (true) {
+                int patternPos = token.pos;
                 JCExpression e = term(EXPR | TYPE | NOLAMBDA);
                 JCPattern p;
                 if (token.kind == IDENTIFIER) {
-                    //TODO: final
-                    JCModifiers mods = F.at(e).Modifiers(0);
-                    JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));
-                    p = toP(F.at(token.pos).BindingPattern(var));
+                    //XXX: modifiers!
+                    checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                    JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
+                    p = toP(F.at(patternPos).BindingPattern(var));
+                    if (token.kind == AMP) {
+                        nextToken();
+                        p = parsePattern(p, true);
+                    }
                 } else {
                     p = toP(F.at(e).ExpressionPattern(e));
                 }
@@ -2974,12 +3031,18 @@ public class JavacParser implements Parser {
             ListBuffer<JCPattern> pats = new ListBuffer<>();
             while (true) {
                 //TODO: final
+                int patternPos = token.pos;
                 JCExpression e = term(EXPR | TYPE | NOLAMBDA);
                 JCPattern p;
                 if (token.kind == IDENTIFIER) {
-                    JCModifiers mods = F.at(e).Modifiers(0);
-                    JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));
-                    p = toP(F.at(token.pos).BindingPattern(var));
+                    //XXX: modifiers!
+                    checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                    JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
+                    p = toP(F.at(patternPos).BindingPattern(var));
+                    if (token.kind == AMP) {
+                        nextToken();
+                        p = parsePattern(p, false);
+                    }
                 } else {
                     p = toP(F.at(e).ExpressionPattern(e));
                 }

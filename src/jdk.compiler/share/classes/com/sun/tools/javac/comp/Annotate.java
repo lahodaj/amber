@@ -1133,6 +1133,11 @@ public class Annotate {
         }
 
         @Override
+        public void visitAndPattern(JCAndPattern that) {
+            //TODO:
+        }
+
+        @Override
         public void visitClassDef(JCClassDecl tree) {
             // We can only hit a classdef if it is declared within
             // a method. Ignore it - the class will be visited

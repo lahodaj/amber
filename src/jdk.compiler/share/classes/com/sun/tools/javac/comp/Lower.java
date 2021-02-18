@@ -3077,7 +3077,9 @@ public class Lower extends TreeTranslator {
             boxedArgs.type = new ArrayType(varargsElement, syms.arrayClass);
             result.append(boxedArgs);
         } else {
-            if (args.length() != 1) throw new AssertionError(args);
+            if (args.length() != 1) {
+                throw new AssertionError(args);
+            }
             JCExpression arg = translate(args.head, parameter);
             anyChanges |= (arg != args.head);
             result.append(arg);
