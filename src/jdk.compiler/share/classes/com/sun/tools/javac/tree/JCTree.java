@@ -242,8 +242,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         BINDINGPATTERN,
         EXPRESSIONPATTERN,
         ANDPATTERN,
-        TRUEGUARDPATTERN,
-        FALSEGUARDPATTERN,
+        GUARDPATTERN,
 
         /** Indexed array expressions, of type Indexed.
          */
@@ -2321,12 +2320,17 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
 
     public static class JCGuardPattern extends JCPattern
             implements GuardPatternTree {
-        public Tag kind;
+        public JCPattern patt;
         public JCExpression expr;
 
-        public JCGuardPattern(Tag kind, JCExpression expr) {
-            this.kind = kind;
+        public JCGuardPattern(JCPattern patt, JCExpression expr) {
+            this.patt = patt;
             this.expr = expr;
+        }
+
+        @Override @DefinedBy(Api.COMPILER_TREE)
+        public PatternTree getPattern() {
+            return patt;
         }
 
         @Override @DefinedBy(Api.COMPILER_TREE)
@@ -2341,7 +2345,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
 
         @DefinedBy(Api.COMPILER_TREE)
         public Kind getKind() {
-            return kind == TRUEGUARDPATTERN ? Kind.TRUE_GUARD_PATTERN : Kind.FALSE_GUARD_PATTERN;
+            return Kind.GUARD_PATTERN;
         }
 
         @Override
@@ -2352,7 +2356,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
 
         @Override
         public Tag getTag() {
-            return kind;
+            return Tag.GUARDPATTERN;
         }
     }
 

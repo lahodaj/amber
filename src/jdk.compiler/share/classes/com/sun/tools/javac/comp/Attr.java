@@ -4061,9 +4061,17 @@ public class Attr extends JCTree.Visitor {
 
     @Override
     public void visitGuardPattern(JCGuardPattern tree) {
-        attribExpr(tree.expr, env, syms.booleanType);
-        result = tree.type = Type.noType;
-        //propagate bindings from expression
+        ListBuffer<BindingSymbol> outBindings = new ListBuffer<>();
+        attribExpr(tree.patt, env);
+        outBindings.addAll(matchBindings.bindingsWhenTrue);
+        Env<AttrContext> bodyEnv = bindingEnv(env, matchBindings.bindingsWhenTrue);
+        try {
+            attribExpr(tree.expr, env, syms.booleanType);
+        } finally {
+            bodyEnv.info.scope.leave();
+        }
+        result = tree.type = tree.patt.type;
+        matchBindings = new MatchBindings(outBindings.toList(), List.nil());
     }
 
     public void visitIndexed(JCArrayAccess tree) {

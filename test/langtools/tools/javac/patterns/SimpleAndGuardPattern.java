@@ -22,10 +22,10 @@ public class SimpleAndGuardPattern {
     }
 
     private static int simple(Object o) throws Throwable {
-        if (o instanceof String s & true(s.equalsIgnoreCase("test"))) {
-            return s.length();
-        }
-        return -1;
+        return switch (o) {
+            case String s && s.equalsIgnoreCase("test") -> s.length();
+            default -> -1;
+        };
     }
 
 }

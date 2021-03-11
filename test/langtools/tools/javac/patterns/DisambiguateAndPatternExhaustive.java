@@ -19,8 +19,8 @@ public class DisambiguateAndPatternExhaustive {
         DisambiguateAndPatternExhaustive test = new DisambiguateAndPatternExhaustive();
         test.disambiguationTest("o instanceof String s & s.length() == 0",
                                  ExpressionType.EXPRESSION);
-        test.disambiguationTest("o instanceof String s & true(s.length() == 0)",
-                                 ExpressionType.PATTERN);
+//        test.disambiguationTest("o instanceof String s & true(s.length() == 0)",
+//                                 ExpressionType.PATTERN);
         test.disambiguationTest("o instanceof String s & method(call)",
                                  ExpressionType.EXPRESSION);
 //        test.disambiguationTest("o instanceof String s & deconstruction(pattern val)",

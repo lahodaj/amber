@@ -929,11 +929,9 @@ public class Pretty extends JCTree.Visitor {
     @Override
     public void visitGuardPattern(JCGuardPattern patt) {
         try {
-            if (patt.kind == TRUEGUARDPATTERN) {
-                print("true(");
-            }
+            printExpr(patt.patt);
+            print(" && ");
             printExpr(patt.expr);
-            print(")");
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

@@ -230,11 +230,9 @@ public class TransPatterns extends TreeTranslator {
 
     @Override
     public void visitGuardPattern(JCGuardPattern tree) {
-        if (tree.kind == Tag.TRUEGUARDPATTERN) {
-            result = translate(tree.expr);
-        } else {
-            result = makeUnary(Tag.NOT, translate(tree.expr));
-        }
+        JCExpression pattern = (JCExpression) this.<JCTree>translate(tree.patt);
+        JCExpression guard = translate(tree.expr);
+        result = makeBinary(Tag.AND, pattern, guard);
     }
 
     @Override
@@ -370,6 +368,7 @@ public class TransPatterns extends TreeTranslator {
         return switch (p.getTag()) {
             case BINDINGPATTERN -> (JCBindingPattern) p;
             case ANDPATTERN -> principalBinding(((JCAndPattern) p).leftPattern);
+            case GUARDPATTERN -> principalBinding(((JCGuardPattern) p).patt);
             default -> null;
         };
     }

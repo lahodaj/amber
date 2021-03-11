@@ -52,8 +52,8 @@ public class Guards {
 
     String typeTestPatternSwitchTest(Object o) {
         switch (o) {
-            case Integer i & true(i == 0): return "zero";
-            case Integer i & true(i == 1): return "one";
+            case Integer i && i == 0: return "zero";
+            case Integer i && i == 1: return "one";
             case Integer i: return "other";
             case Object x: return "any";
             default: throw new IllegalStateException("TODO - needed?");
@@ -62,8 +62,8 @@ public class Guards {
 
     String typeTestPatternSwitchExpressionTest(Object o) {
         return switch (o) {
-            case Integer i & true(i == 0) -> "zero";
-            case Integer i & true(i == 1) -> { yield "one"; }
+            case Integer i && i == 0 -> "zero";
+            case Integer i && i == 1 -> { yield "one"; }
             case Integer i -> "other";
             case Object x -> "any";
             default -> throw new IllegalStateException("TODO - needed?");
@@ -73,8 +73,8 @@ public class Guards {
     String testBooleanSwitchExpression(Object o) {
         String x;
         if (switch (o) {
-            case Integer i & true(i == 0) -> (x = "zero") != null;
-            case Integer i & true(i == 1) -> { x = "one"; yield true; }
+            case Integer i && i == 0 -> (x = "zero") != null;
+            case Integer i && i == 1 -> { x = "one"; yield true; }
             case Integer i -> { x = "other"; yield true; }
             case Object other -> (x = "any") != null;
             default -> false;

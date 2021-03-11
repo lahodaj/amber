@@ -227,8 +227,7 @@ public interface Tree {
         BINDING_PATTERN(BindingPatternTree.class),
         
         AND_PATTERN(AndPatternTree.class),
-        TRUE_GUARD_PATTERN(GuardPatternTree.class),
-        FALSE_GUARD_PATTERN(GuardPatternTree.class),
+        GUARD_PATTERN(GuardPatternTree.class),
 
         /**
          * X

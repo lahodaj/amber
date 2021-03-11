@@ -750,7 +750,8 @@ public class TreeScanner<R,P> implements TreeVisitor<R,P> {
      */
     @Override
     public R visitGuardPattern(GuardPatternTree node, P p) {
-        return scan(node.getExpression(), p);
+        R r = scan(node.getPattern(), p);
+        return scanAndReduce(node.getExpression(), p, r);
     }
 
     /**

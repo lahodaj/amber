@@ -41,6 +41,12 @@ package com.sun.source.tree;
 public interface GuardPatternTree extends PatternTree {
 
     /**
+     * The guarded pattern expression.
+     * @return the guarded pattern
+     */
+    public PatternTree getPattern();
+
+    /**
      * The guard expression.
      * @return the guard expression
      */

@@ -10,10 +10,7 @@ import java.util.Objects;
 public class DisambiguateAndPattern {
 
     public static void main(String... args) throws Throwable {
-        if (!Objects.equals(4, disambiguate("test"))) {
-            throw new IllegalStateException();
-        }
-        if (!Objects.equals(4, disambiguate("TEST"))) {
+        if (!Objects.equals(4, disambiguate(new RunnableCharSequence("test")))) {
             throw new IllegalStateException();
         }
         if (!Objects.equals(-2, disambiguate("other"))) {
@@ -22,7 +19,7 @@ public class DisambiguateAndPattern {
     }
 
     private static int disambiguate(Object o) throws Throwable {
-        if (o instanceof String s & true(s.equalsIgnoreCase("test"))) {
+        if (o instanceof CharSequence s & Runnable r) {
             return s.length();
         }
         if (o instanceof String s & true) {
@@ -31,4 +28,32 @@ public class DisambiguateAndPattern {
         return -1;
     }
 
+    private static final class RunnableCharSequence implements CharSequence, Runnable {
+
+        private final String delegate;
+
+        public RunnableCharSequence(String delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public int length() {
+            return delegate.length();
+        }
+
+        @Override
+        public char charAt(int index) {
+            return delegate.charAt(index);
+        }
+
+        @Override
+        public CharSequence subSequence(int start, int end) {
+            return delegate.subSequence(end, end);
+        }
+
+        @Override
+        public void run() {
+        }
+        
+    }
 }

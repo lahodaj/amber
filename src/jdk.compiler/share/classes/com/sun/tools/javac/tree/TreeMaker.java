@@ -494,8 +494,8 @@ public class TreeMaker implements JCTree.Factory {
         return tree;
     }
 
-    public JCGuardPattern GuardPattern(Tag kind, JCExpression expr) {
-        JCGuardPattern tree = new JCGuardPattern(kind, expr);
+    public JCGuardPattern GuardPattern(JCPattern guardedPattern, JCExpression expr) {
+        JCGuardPattern tree = new JCGuardPattern(guardedPattern, expr);
         tree.pos = pos;
         return tree;
     }

@@ -319,6 +319,7 @@ public class TreeScanner extends Visitor {
 
     @Override
     public void visitGuardPattern(JCGuardPattern that) {
+        scan(that.patt);
         scan(that.expr);
     }
 

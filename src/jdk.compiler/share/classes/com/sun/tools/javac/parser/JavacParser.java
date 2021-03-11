@@ -765,30 +765,25 @@ public class JavacParser implements Parser {
     public JCPattern parsePattern(JCPattern leftIfAny, boolean inInstanceOf) {
         JCPattern pattern;
         int pos = token.pos;
-        if (token.kind == TRUE || token.kind == FALSE) {
-            Tag kind = token.kind == TRUE ? TRUEGUARDPATTERN : FALSEGUARDPATTERN;
-            nextToken();
-            JCExpression expr = parExpression();
-            pattern = toP(F.at(pos).GuardPattern(kind, expr));
-        } else {
-            JCExpression e = term(EXPR | TYPE | NOLAMBDA/* | NOINVOCATION*/);
-            JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
-            pattern = toP(F.at(pos).BindingPattern(var));
-        }
+        JCExpression e = term(EXPR | TYPE | NOLAMBDA/* | NOINVOCATION*/);
+        JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
+        pattern = toP(F.at(pos).BindingPattern(var));
         if (leftIfAny != null) {
             pattern = toP(F.at(pos).AndPattern(leftIfAny, pattern));
         }
         if (token.kind == AMP && (!inInstanceOf || analyzeAmp(1) == AmpResult.PATTERN)) {
             nextToken();
             pattern = parsePattern(pattern, inInstanceOf);
+        } else if (!inInstanceOf && token.kind == AMPAMP) {
+            nextToken();
+            JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
+            pattern = toP(F.at(pos).GuardPattern(pattern, guard));
         }
         return pattern;
     }
 
-    public AmpResult analyzeAmp(int offset) {
+    private AmpResult analyzeAmp(int offset) {
         return switch (S.token(offset).kind) {
-            case TRUE, FALSE ->
-                S.token(offset + 1).kind == LPAREN ? AmpResult.PATTERN : AmpResult.EXPRESSION;
             case IDENTIFIER ->
                 switch (S.token(offset + 1).kind) {
                     case IDENTIFIER -> AmpResult.PATTERN;
@@ -1531,7 +1526,13 @@ public class JavacParser implements Parser {
                     if (token.kind == AMP) {
                         nextToken();
                         p = parsePattern(p, true);
+                    } else if (token.kind == AMPAMP) {
+                        int pos = token.pos;
+                        nextToken();
+                        JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
+                        p = toP(F.at(pos).GuardPattern(p, guard));
                     }
+
                 } else {
                     p = toP(F.at(e).ExpressionPattern(e));
                 }
@@ -3042,6 +3043,11 @@ public class JavacParser implements Parser {
                     if (token.kind == AMP) {
                         nextToken();
                         p = parsePattern(p, false);
+                    } else if (token.kind == AMPAMP) {
+                        int gpos = token.pos;
+                        nextToken();
+                        JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
+                        p = toP(F.at(gpos).GuardPattern(p, guard));
                     }
                 } else {
                     p = toP(F.at(e).ExpressionPattern(e));
