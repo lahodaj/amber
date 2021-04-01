@@ -228,11 +228,7 @@ public interface Tree {
         
         AND_PATTERN(AndPatternTree.class),
         GUARD_PATTERN(GuardPatternTree.class),
-
-        /**
-         * X
-         */
-        EXPRESSION_PATTERN(ExpressionPatternTree.class),
+        DEFAULT_CASE_LABEL(DefaultCaseLabelTree.class),
 
         /**
          * Used for instances of {@link PrimitiveTypeTree}.

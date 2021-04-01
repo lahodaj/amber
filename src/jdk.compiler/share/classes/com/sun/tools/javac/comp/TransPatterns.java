@@ -74,15 +74,16 @@ import com.sun.tools.javac.tree.JCTree.JCAndPattern;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCBreak;
 import com.sun.tools.javac.tree.JCTree.JCCase;
+import com.sun.tools.javac.tree.JCTree.JCCaseLabel;
 import com.sun.tools.javac.tree.JCTree.JCContinue;
 import com.sun.tools.javac.tree.JCTree.JCDoWhileLoop;
-import com.sun.tools.javac.tree.JCTree.JCExpressionPattern;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCGuardPattern;
 import com.sun.tools.javac.tree.JCTree.JCLambda;
 import com.sun.tools.javac.tree.JCTree.JCPattern;
 import com.sun.tools.javac.tree.JCTree.JCStatement;
 import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
+import com.sun.tools.javac.tree.JCTree.JCUnary;
 import com.sun.tools.javac.tree.JCTree.LetExpr;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.List;
@@ -209,6 +210,10 @@ public class TransPatterns extends TreeTranslator {
 
         result = makeTypeTest(make.Ident(currentValue), make.Type(castTargetType));
 
+        if (tree.nullable) {
+            result = makeBinary(Tag.OR, (JCExpression) result, makeBinary(Tag.EQ, make.Ident(currentValue), makeLit(syms.botType, null)));
+        }
+
         VarSymbol bindingVar = bindingContext.bindingDeclared(binding);
         if (bindingVar != null) { //TODO: cannot be null here?
             JCAssign fakeInit = (JCAssign)make.at(tree.pos).Assign(
@@ -259,7 +264,7 @@ public class TransPatterns extends TreeTranslator {
                     names.fromString(tree.pos + target.syntheticNameChar() + "temp"),
                     seltype,
                     currentMethodSym); //XXX:owner - verify field inits!
-            boolean hasNullCase = cases.stream().flatMap(c -> c.pats.stream()).anyMatch(p -> p.hasTag(Tag.EXPRESSIONPATTERN) && TreeInfo.isNull(((JCExpressionPattern) p).value));
+            boolean hasNullCase = cases.stream().flatMap(c -> c.labels.stream()).anyMatch(p -> p.isExpression() && TreeInfo.isNull((JCExpression) p));
             statements.append(make.at(tree.pos).VarDef(temp, !hasNullCase ? attr.makeNullCheck(selector) : selector));
             VarSymbol index = new VarSymbol(Flags.SYNTHETIC,
                     names.fromString(tree.pos + target.syntheticNameChar() + "index"),
@@ -273,7 +278,7 @@ public class TransPatterns extends TreeTranslator {
                                                                   List.of(new WildcardType(syms.objectType, BoundKind.UNBOUND,
                                                                                            syms.boundClass)),
                                                                   syms.classType.tsym)));
-            LoadableConstant[] staticArgValues = cases.stream().flatMap(c -> c.pats.stream()).map(p -> principalBinding(p)).filter(p -> p != null).map(p -> p.var.sym.type).toArray(s -> new LoadableConstant[s]);
+            LoadableConstant[] staticArgValues = cases.stream().flatMap(c -> c.labels.stream()).map(p -> principalBinding(p)).filter(p -> p != null).map(p -> p.var.sym.type).toArray(s -> new LoadableConstant[s]);
 
             Symbol bsm = rs.resolveInternalMethod(tree.pos(), env, syms.switchBootstrapsType,
                     names.fromString("typeSwitch"), staticArgTypes, List.nil());
@@ -299,18 +304,20 @@ public class TransPatterns extends TreeTranslator {
         boolean previousCompletesNormally = false;
 
         for (var c : cases) {
-            if (c.pats.size() == 1 && !c.pats.head.hasTag(Tag.EXPRESSIONPATTERN) && !previousCompletesNormally) {
-                JCPattern p = c.pats.head;
+            List<JCCaseLabel> clearedPatterns = c.labels;
+            if (c.labels.size() > 1 && c.labels.head.isExpression() && TreeInfo.isNull((JCExpression) c.labels.head)) {
+                clearedPatterns = c.labels.tail;
+                if (clearedPatterns.head.hasTag(Tag.BINDINGPATTERN)) {
+                    ((JCBindingPattern) clearedPatterns.head).nullable = true;
+                }
+            }
+            if (clearedPatterns.size() == 1 && !clearedPatterns.head.isExpression() && !clearedPatterns.head.hasTag(Tag.DEFAULTCASELABEL) && !previousCompletesNormally) {
+                JCCaseLabel p = clearedPatterns.head;
                 bindingContext = new BasicBindingContext();
                 VarSymbol prevCurrentValue = currentValue;
                 try {
                     currentValue = temp;
-                    JCExpression test;
-                    if (p.hasTag(Tag.EXPRESSIONPATTERN)) {
-                        test = make.Literal(true);
-                    } else {
-                        test = (JCExpression) this.<JCTree>translate(p);
-                    }
+                    JCExpression test = (JCExpression) this.<JCTree>translate(p);
                     c.stats = translate(c.stats);
                     JCContinue continueSwitch = make.Continue(null);
                     continueSwitch.target = tree;
@@ -323,17 +330,21 @@ public class TransPatterns extends TreeTranslator {
                     bindingContext.pop();
                 }
             }
-            ListBuffer<JCPattern> translatedLabels = new ListBuffer<>();
-            for (var p : c.pats) {
-                int value;
-                if (principalBinding(p) != null) {
-                    value = i++;
+            ListBuffer<JCCaseLabel> translatedLabels = new ListBuffer<>();
+            for (var p : c.labels) {
+                if (p.hasTag(Tag.DEFAULTCASELABEL)) {
+                    translatedLabels.add(p);
                 } else {
-                    value = -1;
+                    int value;
+                    if (principalBinding(p) != null) {
+                        value = i++;
+                    } else {
+                        value = -1;
+                    }
+                    translatedLabels.add(make.Literal(value));
                 }
-                translatedLabels.add(make.ExpressionPattern(make.Literal(value)));
             }
-            c.pats = translatedLabels.toList();
+            c.labels = translatedLabels.toList();
             if (c.caseKind == CaseTree.CaseKind.STATEMENT) {
                 previousCompletesNormally = c.completesNormally;
             } else {
@@ -364,7 +375,7 @@ public class TransPatterns extends TreeTranslator {
         }
     }
     
-    private JCBindingPattern principalBinding(JCPattern p) {
+    private JCBindingPattern principalBinding(JCCaseLabel p) {
         return switch (p.getTag()) {
             case BINDINGPATTERN -> (JCBindingPattern) p;
             case ANDPATTERN -> principalBinding(((JCAndPattern) p).leftPattern);

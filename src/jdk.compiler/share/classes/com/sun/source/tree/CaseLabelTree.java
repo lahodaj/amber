@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,16 +25,7 @@
 
 package com.sun.source.tree;
 
-/**
- * An expression pattern tree
+/**A marker interface for {@code Tree}s that may be used as {@link CaseTree} labels.
  */
-public interface ExpressionPatternTree extends PatternTree {
-
-    /**
-     * The expression of this pattern.
-     * @return expression of this pattern
-     */
-    public ExpressionTree getExpression();
-
-}
-
+//TODO: @since
+public interface CaseLabelTree extends Tree {}

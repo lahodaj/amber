@@ -664,11 +664,10 @@ public class Flow {
             for (List<JCCase> l = tree.cases; l.nonEmpty(); l = l.tail) {
                 alive = Liveness.ALIVE;
                 JCCase c = l.head;
-                if (c.pats.isEmpty())
-                    hasDefault = true;
-                else {
-                    for (JCPattern pat : c.pats) {
-                        scan(pat);
+                for (JCCaseLabel pat : c.labels) {
+                    scan(pat);
+                    if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
+                        hasDefault = true;
                     }
                 }
                 scanStats(c.stats);
@@ -711,20 +710,19 @@ public class Flow {
             for (List<JCCase> l = tree.cases; l.nonEmpty(); l = l.tail) {
                 alive = Liveness.ALIVE;
                 JCCase c = l.head;
-                if (c.pats.isEmpty())
-                    hasDefault = true;
-                else {
-                    for (JCPattern pat : c.pats) {
-                        scan(pat);
-                        if (constants != null) {
-                            if (pat.hasTag(EXPRESSIONPATTERN)) {
-                                JCExpression expr = ((JCExpressionPattern) pat).value;
-                                if (expr.hasTag(IDENT))
-                                    constants.remove(((JCIdent) expr).name);
-                                if (expr.type != null)
-                                    constants.remove(expr.type.constValue());
-                            }
+                for (JCCaseLabel pat : c.labels) {
+                    scan(pat);
+                    if (constants != null) {
+                        if (pat.isExpression()) {
+                            JCExpression expr = (JCExpression) pat;
+                            if (expr.hasTag(IDENT))
+                                constants.remove(((JCIdent) expr).name);
+                            if (expr.type != null)
+                                constants.remove(expr.type.constValue());
                         }
+                    }
+                    if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
+                        hasDefault = true;
                     }
                 }
                 scanStats(c.stats);
@@ -1197,7 +1195,7 @@ public class Flow {
             scan(selector);
             for (List<JCCase> l = cases; l.nonEmpty(); l = l.tail) {
                 JCCase c = l.head;
-                scan(c.pats);
+                scan(c.labels);
                 scan(c.stats);
             }
             if (tree.hasTag(SWITCH_EXPRESSION)) {
@@ -2375,11 +2373,10 @@ public class Flow {
                 inits.assign(initsSwitch);
                 uninits.assign(uninits.andSet(uninitsSwitch));
                 JCCase c = l.head;
-                if (c.pats.isEmpty()) {
-                    hasDefault = true;
-                } else {
-                    for (JCPattern pat : c.pats) {
-                        scanExpr(pat);
+                for (JCCaseLabel pat : c.labels) {
+                    scan(pat);
+                    if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
+                        hasDefault = true;
                     }
                 }
                 if (hasDefault) {

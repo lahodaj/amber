@@ -852,11 +852,12 @@ public class Pretty extends JCTree.Visitor {
 
     public void visitCase(JCCase tree) {
         try {
-            if (tree.pats.isEmpty()) {
+            //XXX: handle default properly:
+            if (tree.labels.isEmpty()) {
                 print("default");
             } else {
                 print("case ");
-                printExprs(tree.pats);
+                printExprs(tree.labels);
             }
             if (tree.caseKind == JCCase.STATEMENT) {
                 print(":");
@@ -901,15 +902,6 @@ public class Pretty extends JCTree.Visitor {
     public void visitBindingPattern(JCBindingPattern patt) {
         try {
             printExpr(patt.var);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    @Override
-    public void visitExpressionPattern(JCExpressionPattern patt) {
-        try {
-            printExpr(patt.value);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

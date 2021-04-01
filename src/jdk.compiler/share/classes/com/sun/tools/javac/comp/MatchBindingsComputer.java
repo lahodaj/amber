@@ -120,6 +120,12 @@ public class MatchBindingsComputer extends TreeScanner {
     public MatchBindings switchCase(JCTree tree, MatchBindings prevBindings, MatchBindings currentBindings) {
         if (prevBindings == null)
             return currentBindings;
+        if (prevBindings.nullPattern) {
+            return currentBindings;
+        }
+        if (currentBindings.nullPattern) {
+            return prevBindings;
+        }
         return new MatchBindings(intersection(tree.pos(), prevBindings.bindingsWhenTrue, prevBindings.bindingsWhenTrue),
                                  intersection(tree.pos(), prevBindings.bindingsWhenFalse, prevBindings.bindingsWhenFalse));
     }
@@ -140,10 +146,16 @@ public class MatchBindingsComputer extends TreeScanner {
 
         public final List<BindingSymbol> bindingsWhenTrue;
         public final List<BindingSymbol> bindingsWhenFalse;
+        public final boolean nullPattern;
 
         public MatchBindings(List<BindingSymbol> bindingsWhenTrue, List<BindingSymbol> bindingsWhenFalse) {
+            this(bindingsWhenTrue, bindingsWhenFalse, false);
+        }
+
+        public MatchBindings(List<BindingSymbol> bindingsWhenTrue, List<BindingSymbol> bindingsWhenFalse, boolean nullPattern) {
             this.bindingsWhenTrue = bindingsWhenTrue;
             this.bindingsWhenFalse = bindingsWhenFalse;
+            this.nullPattern = nullPattern;
         }
 
     }

@@ -1508,35 +1508,43 @@ public class JavacParser implements Parser {
     private List<JCCase> switchExpressionStatementGroup() {
         ListBuffer<JCCase> caseExprs = new ListBuffer<>();
         int casePos = token.pos;
-        ListBuffer<JCPattern> pats = new ListBuffer<>();
+        ListBuffer<JCCaseLabel> pats = new ListBuffer<>();
 
         if (token.kind == DEFAULT) {
             nextToken();
+            pats.append(toP(F.at(casePos).DefaultCaseLabel()));
         } else {
             accept(CASE);
             while (true) {
                 int patternPos = token.pos;
-                JCExpression e = term(EXPR | TYPE | NOLAMBDA);
-                JCPattern p;
-                if (token.kind == IDENTIFIER) {
-                    //XXX: modifiers!
-                    checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
-                    JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
-                    p = toP(F.at(patternPos).BindingPattern(var));
-                    if (token.kind == AMP) {
-                        nextToken();
-                        p = parsePattern(p, true);
-                    } else if (token.kind == AMPAMP) {
-                        int pos = token.pos;
-                        nextToken();
-                        JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-                        p = toP(F.at(pos).GuardPattern(p, guard));
-                    }
-
+                JCCaseLabel label;
+                if (token.kind == DEFAULT) {
+                    //TODO: check source level
+                    nextToken();
+                    label = toP(F.at(patternPos).DefaultCaseLabel());
                 } else {
-                    p = toP(F.at(e).ExpressionPattern(e));
+                    JCExpression e = term(EXPR | TYPE | NOLAMBDA);
+                    if (token.kind == IDENTIFIER) {
+                        //XXX: modifiers!
+                        checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                        JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
+                        JCPattern pattern = toP(F.at(patternPos).BindingPattern(var));
+                        if (token.kind == AMP) {
+                            nextToken();
+                            label = parsePattern(pattern, true);
+                        } else if (token.kind == AMPAMP) {
+                            int pos = token.pos;
+                            nextToken();
+                            JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
+                            label = toP(F.at(pos).GuardPattern(pattern, guard));
+                        } else {
+                            label = pattern;
+                        }
+                    } else {
+                        label = e;
+                    }
                 }
-                pats.append(p);
+                pats.append(label);
                 if (token.kind != COMMA) break;
                 checkSourceLevel(Feature.SWITCH_MULTIPLE_CASE_LABELS);
                 nextToken();
@@ -3029,28 +3037,36 @@ public class JavacParser implements Parser {
         switch (token.kind) {
         case CASE: {
             nextToken();
-            ListBuffer<JCPattern> pats = new ListBuffer<>();
+            ListBuffer<JCCaseLabel> pats = new ListBuffer<>();
             while (true) {
                 //TODO: final
                 int patternPos = token.pos;
-                JCExpression e = term(EXPR | TYPE | NOLAMBDA);
-                JCPattern p;
-                if (token.kind == IDENTIFIER) {
-                    //XXX: modifiers!
-                    checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
-                    JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
-                    p = toP(F.at(patternPos).BindingPattern(var));
-                    if (token.kind == AMP) {
-                        nextToken();
-                        p = parsePattern(p, false);
-                    } else if (token.kind == AMPAMP) {
-                        int gpos = token.pos;
-                        nextToken();
-                        JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-                        p = toP(F.at(gpos).GuardPattern(p, guard));
-                    }
+                JCCaseLabel p;
+                if (token.kind == DEFAULT) {
+                    //TODO: check source level
+                    nextToken();
+                    p = toP(F.at(patternPos).DefaultCaseLabel());
                 } else {
-                    p = toP(F.at(e).ExpressionPattern(e));
+                    JCExpression e = term(EXPR | TYPE | NOLAMBDA);
+                    if (token.kind == IDENTIFIER) {
+                        //XXX: modifiers!
+                        checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                        JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
+                        JCPattern label = toP(F.at(patternPos).BindingPattern(var));
+                        if (token.kind == AMP) {
+                            nextToken();
+                            p = parsePattern(label, false);
+                        } else if (token.kind == AMPAMP) {
+                            int gpos = token.pos;
+                            nextToken();
+                            JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
+                            p = toP(F.at(gpos).GuardPattern(label, guard));
+                        } else {
+                            p = label;
+                        }
+                    } else {
+                        p = e;
+                    }
                 }
                 pats.append(p);
                 if (token.kind != COMMA) break;
@@ -3083,6 +3099,7 @@ public class JavacParser implements Parser {
             nextToken();
             CaseTree.CaseKind caseKind;
             JCTree body = null;
+            int patternPos = token.pos;
             if (token.kind == ARROW) {
                 checkSourceLevel(Feature.SWITCH_RULE);
                 accept(ARROW);
@@ -3098,7 +3115,8 @@ public class JavacParser implements Parser {
                 caseKind = JCCase.STATEMENT;
                 stats = blockStatements();
             }
-            c = F.at(pos).Case(caseKind, List.nil(), stats, body);
+            JCCaseLabel defaultPattern = toP(F.at(patternPos).DefaultCaseLabel());
+            c = F.at(pos).Case(caseKind, List.of(defaultPattern), stats, body);
             if (stats.isEmpty())
                 storeEnd(c, S.prevToken().endPos);
             return cases.append(c).toList();

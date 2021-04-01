@@ -265,15 +265,16 @@ public interface TreeVisitor<R,P> {
      * @since 16
      */
     R visitBindingPattern(BindingPatternTree node, P p);
-    
-    /**
-     * X
-     * @param node X
-     * @param p X
-     * @return X
-     */
-    R visitExpressionPattern(ExpressionPatternTree node, P p);
 
+    /**
+     * Visits a DefaultCaseLabelTree node.
+     * @param node the node being visited
+     * @param p a parameter value
+     * @return a result value
+     * @since 17
+     */
+    R visitDefaultCaseLabel(DefaultCaseLabelTree node, P p);
+    
     /**
      * Visits a MethodTree node.
      * @param node the node being visited

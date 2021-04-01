@@ -71,7 +71,7 @@ public interface CaseTree extends Tree {
      *
      * @return labels for this case
      */
-    List<? extends PatternTree> getPatterns();
+    List<? extends CaseLabelTree> getLabels();
 
     /**
      * For case with kind {@linkplain CaseKind#STATEMENT},

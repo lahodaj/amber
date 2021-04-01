@@ -1298,9 +1298,9 @@ public class Gen extends JCTree.Visitor {
 
             List<JCCase> l = cases;
             for (int i = 0; i < labels.length; i++) {
-                if (l.head.pats.nonEmpty()) {
-                    Assert.check(l.head.pats.size() == 1);
-                    int val = ((Number)((JCExpressionPattern) l.head.pats.head).value.type.constValue()).intValue();
+                if (l.head.labels.head.isExpression()) {
+                    Assert.check(l.head.labels.size() == 1);
+                    int val = ((Number)((JCExpression) l.head.labels.head).type.constValue()).intValue();
                     labels[i] = val;
                     if (val < lo) lo = val;
                     if (hi < val) hi = val;

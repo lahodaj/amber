@@ -696,8 +696,8 @@ public class TreeScanner<R,P> implements TreeVisitor<R,P> {
     }
 
     @Override
-    public R visitExpressionPattern(ExpressionPatternTree node, P p) {
-        return scan(node.getExpression(), p);
+    public R visitDefaultCaseLabel(DefaultCaseLabelTree node, P p) {
+        return null;
     }
 
     /**

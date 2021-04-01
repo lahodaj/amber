@@ -565,7 +565,7 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
     }
 
     @Override
-    public R visitExpressionPattern(ExpressionPatternTree node, P p) {
+    public R visitDefaultCaseLabel(DefaultCaseLabelTree node, P p) {
         return defaultAction(node, p);
     }
 

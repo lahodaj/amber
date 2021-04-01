@@ -562,7 +562,7 @@ public class TransTypes extends TreeTranslator {
     }
 
     public void visitCase(JCCase tree) {
-        tree.pats = translate(tree.pats, null);
+        tree.labels = translate(tree.labels, null);
         tree.stats = translate(tree.stats);
         result = tree;
     }
