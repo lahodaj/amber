@@ -769,7 +769,7 @@ public class JavacParser implements Parser {
         JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
         pattern = toP(F.at(pos).BindingPattern(var));
         if (leftIfAny != null) {
-            pattern = toP(F.at(pos).AndPattern(leftIfAny, pattern));
+            pattern = F.at(pos).AndPattern(leftIfAny, pattern);
         }
         if (token.kind == AMP && (!inInstanceOf || analyzeAmp(1) == AmpResult.PATTERN)) {
             nextToken();
@@ -777,7 +777,7 @@ public class JavacParser implements Parser {
         } else if (!inInstanceOf && token.kind == AMPAMP) {
             nextToken();
             JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-            pattern = toP(F.at(pos).GuardPattern(pattern, guard));
+            pattern = F.at(pos).GuardPattern(pattern, guard);
         }
         return pattern;
     }
@@ -1536,7 +1536,7 @@ public class JavacParser implements Parser {
                             int pos = token.pos;
                             nextToken();
                             JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-                            label = toP(F.at(pos).GuardPattern(pattern, guard));
+                            label = F.at(pos).GuardPattern(pattern, guard);
                         } else {
                             label = pattern;
                         }
@@ -3060,7 +3060,7 @@ public class JavacParser implements Parser {
                             int gpos = token.pos;
                             nextToken();
                             JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-                            p = toP(F.at(gpos).GuardPattern(label, guard));
+                            p = F.at(gpos).GuardPattern(label, guard);
                         } else {
                             p = label;
                         }

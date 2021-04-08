@@ -327,6 +327,11 @@ implements CRTFlags {
             result = sr;
         }
 
+        @Override
+        public void visitDefaultCaseLabel(JCTree.JCDefaultCaseLabel that) {
+            result = null;
+        }
+
         public void visitSynchronized(JCSynchronized tree) {
             SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
             sr.mergeWith(csp(tree.lock));

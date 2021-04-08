@@ -35,6 +35,7 @@ import com.sun.tools.javac.util.*;
 
 import static com.sun.tools.javac.code.Flags.*;
 import static com.sun.tools.javac.code.Flags.ANNOTATION;
+import com.sun.tools.javac.tree.JCTree;
 import static com.sun.tools.javac.tree.JCTree.Tag.*;
 
 /** Prints out a tree as an indented Java source program.
@@ -852,8 +853,7 @@ public class Pretty extends JCTree.Visitor {
 
     public void visitCase(JCCase tree) {
         try {
-            //XXX: handle default properly:
-            if (tree.labels.isEmpty()) {
+            if (tree.labels.size() == 1 && tree.labels.get(0).hasTag(DEFAULTCASELABEL)) {
                 print("default");
             } else {
                 print("case ");
@@ -874,6 +874,15 @@ public class Pretty extends JCTree.Visitor {
                     printBlock(tree.stats);
                 }
             }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
+    public void visitDefaultCaseLabel(JCTree.JCDefaultCaseLabel that) {
+        try {
+            print("default");
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

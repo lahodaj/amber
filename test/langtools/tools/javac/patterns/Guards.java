@@ -1,7 +1,3 @@
-
-import java.util.Objects;
-import java.util.function.Function;
-
 /*
  * Copyright (c) 2017, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -32,6 +28,10 @@ import java.util.function.Function;
  * @compile --enable-preview -source ${jdk.version} Guards.java
  * @run main/othervm --enable-preview Guards
  */
+
+import java.util.Objects;
+import java.util.function.Function;
+
 public class Guards {
     public static void main(String... args) {
         new Guards().run();
