@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,31 +26,21 @@
 package com.sun.source.tree;
 
 /**
- * {@preview Associated with pattern matching for instanceof, a preview feature of
- *           the Java language.
+ * A tree node for a parenthesized pattern.
  *
- *           This interface is associated with <i>pattern matching for instanceof</i>, a preview
- *           feature of the Java language. Preview features
- *           may be removed in a future release, or upgraded to permanent
- *           features of the Java language.}
+ * For example:
+ * <pre>
+ *   ( <em>pattern</em> )
+ * </pre>
  *
- * A and pattern tree
+ * @jls 14.30.1 Kinds of Patterns
  *
- * @since 15
+ * @since 17
  */
-public interface AndPatternTree extends PatternTree {
-
+public interface ParenthesizedPatternTree extends PatternTree {
     /**
-     * Returns the left (first) pattern.
-     * @return the left operand
+     * Returns the pattern within the parentheses.
+     * @return the pattern
      */
-    PatternTree getLeftPattern();
-
-    /**
-     * Returns the right (second) pattern.
-     * @return the right operand
-     */
-    PatternTree getRightPattern();
-
+    PatternTree getPattern();
 }
-

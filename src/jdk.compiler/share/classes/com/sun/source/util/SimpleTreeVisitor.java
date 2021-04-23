@@ -599,10 +599,10 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
      * @param node {@inheritDoc}
      * @param p {@inheritDoc}
      * @return  the result of {@code defaultAction}
-     * @since 15
+     * @since 17
      */
     @Override
-    public R visitAndPattern(AndPatternTree node, P p) {
+    public R visitParenthesizedPattern(ParenthesizedPatternTree node, P p) {
         return defaultAction(node, p);
     }
 

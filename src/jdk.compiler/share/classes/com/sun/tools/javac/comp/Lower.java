@@ -3092,6 +3092,9 @@ public class Lower extends TreeTranslator {
     @SuppressWarnings("unchecked") // XXX unchecked
     <T extends JCExpression> T boxIfNeeded(T tree, Type type) {
         boolean havePrimitive = tree.type.isPrimitive();
+        if (type == null) {
+            System.err.println("!!!!");
+        }
         if (havePrimitive == type.isPrimitive())
             return tree;
         if (havePrimitive) {
@@ -3655,6 +3658,35 @@ public class Lower extends TreeTranslator {
             types.isSameType(selector.type, syms.stringType);
         Type target = enumSwitch ? selector.type :
             (stringSwitch? syms.stringType : syms.intType);
+        if (!enumSwitch && !stringSwitch && !selector.type.isPrimitive() && cases.stream().anyMatch(c -> TreeInfo.isNull(c.labels.head))) {
+            Set<Integer> constants = new LinkedHashSet<>();
+            JCCase nullCase = null;
+
+            for (JCCase c : cases) {
+                if (TreeInfo.isNull(c.labels.head)) {
+                    nullCase = c;
+                } else if (!c.labels.head.hasTag(DEFAULTCASELABEL)) {
+                    constants.add((int) c.labels.head.type.constValue());
+                }
+            }
+
+            Assert.checkNonNull(nullCase);
+
+            int value = constants.isEmpty() ? 0 : constants.iterator().next();
+
+            while (constants.contains(value)) value++;
+
+            nullCase.labels.head = makeLit(syms.intType, value);
+            
+
+            VarSymbol dollar_s = new VarSymbol(FINAL|SYNTHETIC,
+                                               names.fromString("s" + tree.pos + this.target.syntheticNameChar()),
+                                               selector.type,
+                                               currentMethodSym);
+            ListBuffer<JCStatement> stmtList = new ListBuffer<>();
+            stmtList.append(make.at(tree.pos()).VarDef(dollar_s, selector).setType(dollar_s.type));
+            selector = make.LetExpr(stmtList.toList(), make.Conditional(makeBinary(NE, make.Ident(dollar_s), makeNull()), make.Ident(dollar_s), makeLit(syms.intType, value)).setType(selector.type)).setType(selector.type);
+        }
         selector = translate(selector, target);
         cases = translateCases(cases);
         if (tree.hasTag(SWITCH)) {
@@ -3683,14 +3715,34 @@ public class Lower extends TreeTranslator {
                                             names.ordinal,
                                             selector.type,
                                             List.nil());
-        JCArrayAccess newSelector = make.Indexed(map.mapVar,
-                                        make.App(make.Select(selector,
-                                                             ordinalMethod)));
+        JCExpression newSelector;
+        
+        if (cases.stream().anyMatch(c -> TreeInfo.isNull(c.labels.head))) {
+            VarSymbol dollar_s = new VarSymbol(FINAL|SYNTHETIC,
+                                               names.fromString("s" + tree.pos + this.target.syntheticNameChar()),
+                                               selector.type,
+                                               currentMethodSym);
+            ListBuffer<JCStatement> stmtList = new ListBuffer<>();
+            stmtList.append(make.at(tree.pos()).VarDef(dollar_s, selector).setType(dollar_s.type));
+            newSelector = make.Indexed(map.mapVar,
+                    make.App(make.Select(make.Ident(dollar_s),
+                            ordinalMethod)));
+            newSelector = make.LetExpr(stmtList.toList(), make.Conditional(makeBinary(NE, make.Ident(dollar_s), makeNull()), newSelector, makeLit(syms.intType, -1)).setType(newSelector.type)).setType(newSelector.type);
+        } else {
+            newSelector = make.Indexed(map.mapVar,
+                    make.App(make.Select(selector,
+                            ordinalMethod)));
+        }
         ListBuffer<JCCase> newCases = new ListBuffer<>();
         for (JCCase c : cases) {
             if (c.labels.head.isExpression()) {
-                VarSymbol label = (VarSymbol)TreeInfo.symbol((JCExpression) c.labels.head);
-                JCLiteral pat = map.forConstant(label);
+                JCExpression pat;
+                if (TreeInfo.isNull(c.labels.head)) {
+                    pat = makeLit(syms.intType, -1);
+                } else {
+                    VarSymbol label = (VarSymbol)TreeInfo.symbol((JCExpression) c.labels.head);
+                    pat = map.forConstant(label);
+                }
                 newCases.append(make.Case(JCCase.STATEMENT, List.of(pat), c.stats, null));
             } else {
                 newCases.append(c);
@@ -3767,26 +3819,40 @@ public class Lower extends TreeTranslator {
             Map<Integer, Set<String>> hashToString = new LinkedHashMap<>(alternatives + 1, 1.0f);
 
             int casePosition = 0;
+            JCCase nullCase = null;
+            int nullCaseLabel = -1;
 
             for(JCCase oneCase : caseList) {
                 if (oneCase.labels.head.isExpression()) {
-                    JCExpression expression = (JCExpression) oneCase.labels.head;
-                    String labelExpr = (String) expression.type.constValue();
-                    Integer mapping = caseLabelToPosition.put(labelExpr, casePosition);
-                    Assert.checkNull(mapping);
-                    int hashCode = labelExpr.hashCode();
-
-                    Set<String> stringSet = hashToString.get(hashCode);
-                    if (stringSet == null) {
-                        stringSet = new LinkedHashSet<>(1, 1.0f);
-                        stringSet.add(labelExpr);
-                        hashToString.put(hashCode, stringSet);
+                    if (TreeInfo.isNull(oneCase.labels.head)) {
+                        nullCase = oneCase;
+                        nullCaseLabel = casePosition;
                     } else {
-                        boolean added = stringSet.add(labelExpr);
-                        Assert.check(added);
+                        JCExpression expression = (JCExpression) oneCase.labels.head;
+                        String labelExpr = (String) expression.type.constValue();
+                        Integer mapping = caseLabelToPosition.put(labelExpr, casePosition);
+                        Assert.checkNull(mapping);
+                        int hashCode = labelExpr.hashCode();
+
+                        Set<String> stringSet = hashToString.get(hashCode);
+                        if (stringSet == null) {
+                            stringSet = new LinkedHashSet<>(1, 1.0f);
+                            stringSet.add(labelExpr);
+                            hashToString.put(hashCode, stringSet);
+                        } else {
+                            boolean added = stringSet.add(labelExpr);
+                            Assert.check(added);
+                        }
                     }
                 }
                 casePosition++;
+            }
+
+            int nullLabel = 0;
+
+            if (nullCase != null) {
+                while (hashToString.containsKey(nullLabel)) nullLabel++;
+                nullCase.labels.head = makeLit(syms.intType, nullLabel);
             }
 
             // Synthesize a switch statement that has the effect of
@@ -3858,7 +3924,14 @@ public class Lower extends TreeTranslator {
             }
 
             switch1.cases = caseBuffer.toList();
-            stmtList.append(switch1);
+
+            if (nullCase != null) {
+                stmtList.append(make.If(makeBinary(NE, make.Ident(dollar_s), makeNull()), switch1, make.Exec(make.Assign(make.Ident(dollar_tmp),
+                                                             make.Literal(nullCaseLabel)).
+                                                 setType(dollar_tmp.type))).setType(syms.intType));
+            } else {
+                stmtList.append(switch1);
+            }
 
             // Make isomorphic switch tree replacing string labels
             // with corresponding integer ones from the label to
@@ -3870,7 +3943,9 @@ public class Lower extends TreeTranslator {
                 JCCaseLabel caseExpr;
                 if (isDefault)
                     caseExpr = null;
-                else {
+                else if (oneCase == nullCase) {
+                    caseExpr = make.Literal(nullCaseLabel);
+                } else {
                     caseExpr = make.Literal(caseLabelToPosition.get((String)TreeInfo.skipParens((JCExpression) oneCase.labels.head).
                                                                     type.constValue()));
                 }

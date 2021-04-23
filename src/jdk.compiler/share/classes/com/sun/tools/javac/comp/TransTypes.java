@@ -584,9 +584,8 @@ public class TransTypes extends TreeTranslator {
     }
 
     @Override
-    public void visitAndPattern(JCAndPattern tree) {
-        tree.leftPattern = translate(tree.leftPattern, null);
-        tree.rightPattern = translate(tree.rightPattern, null);
+    public void visitParenthesizedPattern(JCParenthesizedPattern tree) {
+        tree.pattern = translate(tree.pattern, null);
         result = tree;
     }
 

@@ -917,11 +917,11 @@ public class Pretty extends JCTree.Visitor {
     }
 
     @Override
-    public void visitAndPattern(JCAndPattern patt) {
+    public void visitParenthesizedPattern(JCParenthesizedPattern patt) {
         try {
-            printExpr(patt.leftPattern);
-            print(" & ");
-            printExpr(patt.rightPattern);
+            print("(");
+            printExpr(patt.pattern);
+            print(")");
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

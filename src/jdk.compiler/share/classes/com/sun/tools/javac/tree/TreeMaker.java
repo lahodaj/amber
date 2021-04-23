@@ -488,8 +488,8 @@ public class TreeMaker implements JCTree.Factory {
         return tree;
     }
 
-    public JCAndPattern AndPattern(JCPattern leftPattern, JCPattern rightPattern) {
-        JCAndPattern tree = new JCAndPattern(leftPattern, rightPattern);
+    public JCParenthesizedPattern ParenthesizedPattern(JCPattern pattern) {
+        JCParenthesizedPattern tree = new JCParenthesizedPattern(pattern);
         tree.pos = pos;
         return tree;
     }

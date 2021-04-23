@@ -226,8 +226,8 @@ public interface Tree {
          */
         BINDING_PATTERN(BindingPatternTree.class),
         
-        AND_PATTERN(AndPatternTree.class),
         GUARD_PATTERN(GuardPatternTree.class),
+        PARENTHESIZED_PATTERN(ParenthesizedPatternTree.class),
         DEFAULT_CASE_LABEL(DefaultCaseLabelTree.class),
 
         /**

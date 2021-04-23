@@ -25,6 +25,8 @@
 
 package com.sun.source.tree;
 
+import jdk.internal.javac.PreviewFeature;
+
 /**
  * A visitor of trees, in the style of the visitor design pattern.
  * Classes implementing this interface are used to operate
@@ -300,38 +302,24 @@ public interface TreeVisitor<R,P> {
     R visitNewArray(NewArrayTree node, P p);
 
     /**
-     * {@preview Associated with pattern matching for instanceof, a preview feature of
-     *           the Java language.
-     *
-     *           This method is associated with <i>pattern matching for instanceof</i>, a preview
-     *           feature of the Java language. Preview features
-     *           may be removed in a future release, or upgraded to permanent
-     *           features of the Java language.}
-     *
-     * Visits an AndPatternTree node.
-     * @param node the node being visited
-     * @param p a parameter value
-     * @return a result value
-     * @since 15
-     */
-    R visitAndPattern(AndPatternTree node, P p);
-
-    /**
-     * {@preview Associated with pattern matching for instanceof, a preview feature of
-     *           the Java language.
-     *
-     *           This method is associated with <i>pattern matching for instanceof</i>, a preview
-     *           feature of the Java language. Preview features
-     *           may be removed in a future release, or upgraded to permanent
-     *           features of the Java language.}
-     *
      * Visits an GuardPatternTree node.
      * @param node the node being visited
      * @param p a parameter value
      * @return a result value
      * @since 15
      */
+//    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
     R visitGuardPattern(GuardPatternTree node, P p);
+
+    /**
+     * Visits an AndPatternTree node.
+     * @param node the node being visited
+     * @param p a parameter value
+     * @return a result value
+     * @since 17
+     */
+//    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    R visitParenthesizedPattern(ParenthesizedPatternTree node, P p);
 
     /**
      * Visits a NewClassTree node.

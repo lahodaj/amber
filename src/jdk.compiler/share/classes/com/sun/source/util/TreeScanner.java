@@ -732,12 +732,11 @@ public class TreeScanner<R,P> implements TreeVisitor<R,P> {
      * @param node  {@inheritDoc}
      * @param p  {@inheritDoc}
      * @return the result of scanning
-     * @since 15
+     * @since 17
      */
     @Override
-    public R visitAndPattern(AndPatternTree node, P p) {
-        R r = scan(node.getLeftPattern(), p);
-        return scanAndReduce(node.getRightPattern(), p, r);
+    public R visitParenthesizedPattern(ParenthesizedPatternTree node, P p) {
+        return scan(node.getPattern(), p);
     }
 
     /**

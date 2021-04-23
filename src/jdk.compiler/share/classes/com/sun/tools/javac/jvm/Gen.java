@@ -1373,7 +1373,6 @@ public class Gen extends JCTree.Visitor {
             }
 
             if (switchEnv.info.cont != null) {
-                System.err.println("continue-switch:");
                 //TODO: fall-through from the last case:
                 code.resolve(switchEnv.info.cont);
                 code.resolve(code.branch(goto_), switchStart);

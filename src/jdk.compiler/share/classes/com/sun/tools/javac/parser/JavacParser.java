@@ -762,44 +762,47 @@ public class JavacParser implements Parser {
     /** parses patterns.
      */
 
-    public JCPattern parsePattern(JCPattern leftIfAny, boolean inInstanceOf) {
-        JCPattern pattern;
-        int pos = token.pos;
-        JCExpression e = term(EXPR | TYPE | NOLAMBDA/* | NOINVOCATION*/);
-        JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
-        pattern = toP(F.at(pos).BindingPattern(var));
-        if (leftIfAny != null) {
-            pattern = F.at(pos).AndPattern(leftIfAny, pattern);
+    public JCPattern parsePattern(JCModifiers mods, JCExpression parsedType, boolean inInstanceOf) {
+        if (token.kind == LPAREN && parsedType == null) {
+            int startPos = token.pos;
+            accept(LPAREN);
+            JCPattern p = parsePattern(null, null, false);
+            accept(RPAREN);
+            return toP(F.at(startPos).ParenthesizedPattern(p));
+        } else {
+            JCPattern pattern;
+            int pos = token.pos;
+            JCExpression e = parsedType == null ? term(EXPR | TYPE | NOLAMBDA/* | NOINVOCATION*/) : parsedType;
+            mods = mods != null ? mods : F.at(token.pos).Modifiers(0);
+            JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));
+            pattern = toP(F.at(pos).BindingPattern(var));
+            if (!inInstanceOf && token.kind == AMPAMP) {
+                nextToken();
+                JCExpression guard = term(EXPR | NOLAMBDA);
+                pattern = F.at(pos).GuardPattern(pattern, guard);
+            }
+            return pattern;
         }
-        if (token.kind == AMP && (!inInstanceOf || analyzeAmp(1) == AmpResult.PATTERN)) {
-            nextToken();
-            pattern = parsePattern(pattern, inInstanceOf);
-        } else if (!inInstanceOf && token.kind == AMPAMP) {
-            nextToken();
-            JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-            pattern = F.at(pos).GuardPattern(pattern, guard);
-        }
-        return pattern;
     }
 
-    private AmpResult analyzeAmp(int offset) {
-        return switch (S.token(offset).kind) {
-            case IDENTIFIER ->
-                switch (S.token(offset + 1).kind) {
-                    case IDENTIFIER -> AmpResult.PATTERN;
-                    case LPAREN -> analyzeAmp(offset + 2);
-                    case LBRACKET -> S.token(offset + 2).kind == RBRACKET ? AmpResult.PATTERN : AmpResult.EXPRESSION;
-                    default -> AmpResult.EXPRESSION;
-                };
-            case LBRACE -> AmpResult.PATTERN; //error recovery - expect erroneous array pattern
-            default -> AmpResult.EXPRESSION;
-        };
-    }
-
-    enum AmpResult {
-        EXPRESSION,
-        PATTERN;
-    }
+//    private AmpResult analyzeAmp(int offset) {
+//        return switch (S.token(offset).kind) {
+//            case IDENTIFIER ->
+//                switch (S.token(offset + 1).kind) {
+//                    case IDENTIFIER -> AmpResult.PATTERN;
+//                    case LPAREN -> analyzeAmp(offset + 2);
+//                    case LBRACKET -> S.token(offset + 2).kind == RBRACKET ? AmpResult.PATTERN : AmpResult.EXPRESSION;
+//                    default -> AmpResult.EXPRESSION;
+//                };
+//            case LBRACE -> AmpResult.PATTERN; //error recovery - expect erroneous array pattern
+//            default -> AmpResult.EXPRESSION;
+//        };
+//    }
+//
+//    enum AmpResult {
+//        EXPRESSION,
+//        PATTERN;
+//    }
 
     /**
      * parses (optional) type annotations followed by a type. If the
@@ -979,35 +982,33 @@ public class JavacParser implements Parser {
             if (token.kind == INSTANCEOF) {
                 int pos = token.pos;
                 nextToken();
-                int patternPos = token.pos;
-                JCModifiers mods = optFinal(0);
-                int typePos = token.pos;
-                JCExpression type = unannotatedType(false);
                 JCTree pattern;
-                if (token.kind == IDENTIFIER) {
-                    checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
-                    JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), type, null));
-                    pattern = toP(F.at(patternPos).BindingPattern(var));
-                    if (token.kind == AMP && analyzeAmp(1) == AmpResult.PATTERN) {
-                        nextToken();
-                        pattern = parsePattern((JCPattern) pattern, true);
-                    }
+                if (token.kind == LPAREN) {
+                    pattern = parsePattern(null, null, true);
                 } else {
-                    checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
-                    if (mods.annotations.nonEmpty()) {
-                        checkSourceLevel(mods.annotations.head.pos, Feature.TYPE_ANNOTATIONS);
-                        List<JCAnnotation> typeAnnos =
-                                mods.annotations
-                                    .map(decl -> {
-                                        JCAnnotation typeAnno = F.at(decl.pos)
-                                                                 .TypeAnnotation(decl.annotationType,
-                                                                                  decl.args);
-                                        endPosTable.replaceTree(decl, typeAnno);
-                                        return typeAnno;
-                                    });
-                        type = insertAnnotationsToMostInner(type, typeAnnos, false);
+                    JCModifiers mods = optFinal(0);
+                    int typePos = token.pos;
+                    JCExpression type = unannotatedType(false);
+                    if (token.kind == IDENTIFIER) {
+                        checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                        pattern = parsePattern(mods, type, true);
+                    } else {
+                        checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
+                        if (mods.annotations.nonEmpty()) {
+                            checkSourceLevel(mods.annotations.head.pos, Feature.TYPE_ANNOTATIONS);
+                            List<JCAnnotation> typeAnnos =
+                                    mods.annotations
+                                        .map(decl -> {
+                                            JCAnnotation typeAnno = F.at(decl.pos)
+                                                                     .TypeAnnotation(decl.annotationType,
+                                                                                      decl.args);
+                                            endPosTable.replaceTree(decl, typeAnno);
+                                            return typeAnno;
+                                        });
+                            type = insertAnnotationsToMostInner(type, typeAnnos, false);
+                        }
+                        pattern = type;
                     }
-                    pattern = type;
                 }
                 odStack[top] = F.at(pos).TypeTest(odStack[top], pattern);
             } else {
@@ -1522,24 +1523,16 @@ public class JavacParser implements Parser {
                     //TODO: check source level
                     nextToken();
                     label = toP(F.at(patternPos).DefaultCaseLabel());
+                } else if (token.kind == LPAREN) {
+                    //XXX: check source level
+                    label = parsePattern(null, null, false);
                 } else {
                     JCExpression e = term(EXPR | TYPE | NOLAMBDA);
                     if (token.kind == IDENTIFIER) {
                         //XXX: modifiers!
+                        //XXX: check source level
                         checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
-                        JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
-                        JCPattern pattern = toP(F.at(patternPos).BindingPattern(var));
-                        if (token.kind == AMP) {
-                            nextToken();
-                            label = parsePattern(pattern, true);
-                        } else if (token.kind == AMPAMP) {
-                            int pos = token.pos;
-                            nextToken();
-                            JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-                            label = F.at(pos).GuardPattern(pattern, guard);
-                        } else {
-                            label = pattern;
-                        }
+                        label = parsePattern(null, e, false);
                     } else {
                         label = e;
                     }
@@ -3046,24 +3039,16 @@ public class JavacParser implements Parser {
                     //TODO: check source level
                     nextToken();
                     p = toP(F.at(patternPos).DefaultCaseLabel());
+                } else if (token.kind == LPAREN) {
+                    //XXX: check source level
+                    p = parsePattern(null, null, false);
                 } else {
                     JCExpression e = term(EXPR | TYPE | NOLAMBDA);
                     if (token.kind == IDENTIFIER) {
                         //XXX: modifiers!
+                        //XXX: check source level
                         checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
-                        JCVariableDecl var = toP(F.at(token.pos).VarDef(F.Modifiers(0), ident(), e, null));
-                        JCPattern label = toP(F.at(patternPos).BindingPattern(var));
-                        if (token.kind == AMP) {
-                            nextToken();
-                            p = parsePattern(label, false);
-                        } else if (token.kind == AMPAMP) {
-                            int gpos = token.pos;
-                            nextToken();
-                            JCExpression guard = parseExpression(); //XXX: NOLAMBDA?
-                            p = F.at(gpos).GuardPattern(label, guard);
-                        } else {
-                            p = label;
-                        }
+                        p = parsePattern(null, e, false);
                     } else {
                         p = e;
                     }

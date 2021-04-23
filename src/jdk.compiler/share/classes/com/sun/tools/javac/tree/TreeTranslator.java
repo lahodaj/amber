@@ -369,9 +369,8 @@ public class TreeTranslator extends JCTree.Visitor {
     }
 
     @Override
-    public void visitAndPattern(JCAndPattern tree) {
-        tree.leftPattern = translate(tree.leftPattern);
-        tree.rightPattern = translate(tree.rightPattern);
+    public void visitParenthesizedPattern(JCParenthesizedPattern tree) {
+        tree.pattern = translate(tree.pattern);
         result = tree;
     }
 

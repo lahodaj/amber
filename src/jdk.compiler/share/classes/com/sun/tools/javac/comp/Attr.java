@@ -172,6 +172,9 @@ public class Attr extends JCTree.Visitor {
                 Feature.REIFIABLE_TYPES_INSTANCEOF.allowedInSource(source) &&
                 (!preview.isPreview(Feature.REIFIABLE_TYPES_INSTANCEOF) || preview.isEnabled());
         allowRecords = Feature.RECORDS.allowedInSource(source);
+        allowCaseNull =
+                Feature.CASE_NULL.allowedInSource(source) &&
+                (!preview.isPreview(Feature.CASE_NULL) || preview.isEnabled());
         sourceName = source.name;
         useBeforeDeclarationWarning = options.isSet("useBeforeDeclarationWarning");
 
@@ -211,6 +214,10 @@ public class Attr extends JCTree.Visitor {
     /** Are records allowed
      */
     private final boolean allowRecords;
+
+    /** Switch: case null allowed?
+     */
+    boolean allowCaseNull;
 
     /**
      * Switch: warn about use of variable before declaration?
@@ -1650,13 +1657,16 @@ public class Attr extends JCTree.Visitor {
         try {
             boolean enumSwitch = (seltype.tsym.flags() & Flags.ENUM) != 0;
             boolean stringSwitch = types.isSameType(seltype, syms.stringType);
-            boolean typeTestSwitch = !seltype.isPrimitive() && !types.unboxedType(seltype).hasTag(INT) && !enumSwitch && !stringSwitch;
-            if (!enumSwitch && !stringSwitch && !typeTestSwitch)
-                seltype = chk.checkType(selector.pos(), seltype, syms.intType);
+            //TODO: should check source level here, and reject seltype != int/String/enum iff not the new source level:
+            //this is wrong - pattern matching switches are determined based on the form of the cases, not based on the type of the selector!
+//            boolean typeTestSwitch = cases.stream().flatMap(c -> c.labels.stream()).anyMatch(l -> !l.isExpression() && !l.hasTag(DEFAULTCASELABEL));
+//            if (!enumSwitch && !stringSwitch && !typeTestSwitch)
+//                seltype = chk.checkType(selector.pos(), seltype, syms.intType);
 
             // Attribute all cases and
             // check that there are no duplicate case labels or default clauses.
             Set<Object> labels = new HashSet<>(); // The set of case labels.
+            List<Type> coveredTypes = List.nil();
             boolean hasDefault = false;      // Is there a default label?
             MatchBindings prevBindings = null;
             CaseTree.CaseKind caseKind = null;
@@ -1675,6 +1685,19 @@ public class Attr extends JCTree.Visitor {
                     if (pat.isExpression()) {
                         JCExpression expr = (JCExpression) pat;
                         if (TreeInfo.isNull(expr)) {
+                            if (preview.isPreview(Feature.CASE_NULL) && !preview.isEnabled()) {
+                                //preview feature without --preview flag, error
+                                log.error(DiagnosticFlag.SOURCE_LEVEL, expr.pos(), preview.disabledError(Feature.CASE_NULL));
+                            } else {
+                                if (!allowCaseNull) {
+                                    log.error(DiagnosticFlag.SOURCE_LEVEL, expr.pos(),
+                                              Feature.CASE_NULL.error(this.sourceName));
+                                    allowCaseNull = true;
+                                }
+                                if (preview.isEnabled() && preview.isPreview(Feature.CASE_NULL)) {
+                                    preview.warnPreview(expr.pos(), Feature.CASE_NULL);
+                                }
+                            }
                             attribExpr(expr, switchEnv, seltype);
                             matchBindings = new MatchBindings(matchBindings.bindingsWhenTrue, matchBindings.bindingsWhenFalse, true);
                         } else if (enumSwitch) {
@@ -1705,6 +1728,16 @@ public class Attr extends JCTree.Visitor {
                     } else {
                         //binding pattern
                         attribExpr(pat, switchEnv, seltype);
+                        var primary = primaryType((JCPattern) pat);
+                        Type patternType = types.erasure(primary.fst);
+                        for (Type existing : coveredTypes) {
+                            if (types.isSubtype(patternType, existing)) {
+                                log.error(c.pos(), Errors.PatternDominated);
+                            }
+                        }
+                        if (primary.snd) {
+                            coveredTypes = coveredTypes.prepend(patternType);
+                        }
                     }
                     currentBindings = matchBindingsComputer.switchCase(pat, currentBindings, matchBindings);
                 }
@@ -1750,6 +1783,26 @@ public class Attr extends JCTree.Visitor {
             }
         }
         return null;
+    }
+    private Pair<Type, Boolean> primaryType(JCPattern pat) {
+        return switch (pat.getTag()) {
+            case BINDINGPATTERN -> Pair.of(((JCBindingPattern) pat).type, true);
+            case GUARDPATTERN -> {
+                JCGuardPattern guarded = (JCGuardPattern) pat;
+                Pair<Type, Boolean> nested = primaryType(guarded.patt);
+                boolean full = false;
+                //TODO: duplicated in Flow:
+                if (guarded.expr.type.hasTag(BOOLEAN)) {
+                    var constValue = guarded.expr.type.constValue();
+                    if (constValue != null && ((int) constValue) == 1) {
+                        full = true;
+                    }
+                }
+                yield Pair.of(nested.fst, full);
+            }
+            case PARENTHESIZEDPATTERN -> primaryType(((JCParenthesizedPattern) pat).pattern);
+            default -> throw new AssertionError();
+        };
     }
 
     public void visitSynchronized(JCSynchronized tree) {
@@ -4035,23 +4088,8 @@ public class Attr extends JCTree.Visitor {
     }
 
     @Override
-    public void visitAndPattern(JCAndPattern tree) {
-        ListBuffer<BindingSymbol> outBindings = new ListBuffer<>();
-        attribExpr(tree.leftPattern, env);
-        outBindings.addAll(matchBindings.bindingsWhenTrue);
-        Env<AttrContext> bodyEnv = bindingEnv(env, matchBindings.bindingsWhenTrue);
-        try {
-            attribExpr(tree.rightPattern, env);
-        } finally {
-            bodyEnv.info.scope.leave();
-        }
-        outBindings.addAll(matchBindings.bindingsWhenTrue);
-        if (tree.rightPattern.type != Type.noType) {
-            result = tree.type = types.makeIntersectionType(List.of(tree.leftPattern.type, tree.rightPattern.type));
-        } else {
-            result = tree.type = tree.leftPattern.type;
-        }
-        matchBindings = new MatchBindings(outBindings.toList(), List.nil());
+    public void visitParenthesizedPattern(JCParenthesizedPattern tree) {
+        attribExpr(tree.pattern, env);
     }
 
     @Override

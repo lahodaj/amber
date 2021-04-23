@@ -52,6 +52,7 @@ import static com.sun.tools.javac.code.Flags.BLOCK;
 import static com.sun.tools.javac.code.Kinds.Kind.*;
 import static com.sun.tools.javac.code.TypeTag.BOOLEAN;
 import static com.sun.tools.javac.code.TypeTag.VOID;
+import com.sun.tools.javac.tree.JCTree.JCParenthesizedPattern;
 import static com.sun.tools.javac.tree.JCTree.Tag.*;
 
 /** This pass implements dataflow analysis for Java programs though
@@ -704,8 +705,12 @@ public class Flow {
                 for (Symbol s : selectorSym.members().getSymbols(enumConstantFilter)) {
                     constants.add(s.name);
                 }
+            } else if (selectorSym.isAbstract() && selectorSym.isSealed() && selectorSym.kind == Kind.TYP) {
+                constants = new HashSet<>();
+                constants.addAll(((ClassSymbol) selectorSym).permitted);
             }
             boolean hasDefault = false;
+            boolean coversInput = false;
             Liveness prevAlive = alive;
             for (List<JCCase> l = tree.cases; l.nonEmpty(); l = l.tail) {
                 alive = Liveness.ALIVE;
@@ -717,8 +722,15 @@ public class Flow {
                             JCExpression expr = (JCExpression) pat;
                             if (expr.hasTag(IDENT))
                                 constants.remove(((JCIdent) expr).name);
-                            if (expr.type != null)
-                                constants.remove(expr.type.constValue());
+                        } else {
+                            constants.remove(patternType((JCTree.JCPattern) pat));
+                        }
+                    }
+                    if (!pat.isExpression() && !pat.hasTag(DEFAULTCASELABEL)) {
+                        TypeSymbol patternType = patternType((JCTree.JCPattern) pat);
+                        if (patternType != null && types.isSubtype(types.erasure(tree.selector.type),
+                                                                    types.erasure(patternType.type))) {
+                            coversInput = true;
                         }
                     }
                     if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
@@ -737,13 +749,30 @@ public class Flow {
                 }
                 c.completesNormally = alive != Liveness.DEAD;
             }
-            if ((constants == null || !constants.isEmpty()) && !hasDefault) {
+            if ((constants == null || !constants.isEmpty()) && !hasDefault && !coversInput) {
                 log.error(tree, Errors.NotExhaustive);
             }
             alive = prevAlive;
             alive = alive.or(resolveYields(tree, prevPendingExits));
         }
 
+        private TypeSymbol patternType(JCPattern p) {
+            return switch (p.getTag()) {
+                case BINDINGPATTERN -> ((JCBindingPattern) p).var.vartype.type.tsym;
+                case PARENTHESIZEDPATTERN -> patternType(((JCParenthesizedPattern) p).pattern);
+                case GUARDPATTERN -> {
+                    JCGuardPattern g = (JCGuardPattern) p;
+                    if (g.expr.type.hasTag(BOOLEAN)) {
+                        var constValue = g.expr.type.constValue();
+                        if (constValue != null && ((int) (Integer) constValue) == 1) {
+                            yield patternType(g.patt);
+                        }
+                    }
+                    yield null;
+                }
+                default -> throw new AssertionError("Unexpected pattern type: " + p.getTag());
+            };
+        }
         public void visitTry(JCTry tree) {
             ListBuffer<PendingExit> prevPendingExits = pendingExits;
             pendingExits = new ListBuffer<>();
@@ -2372,20 +2401,25 @@ public class Flow {
             for (List<JCCase> l = cases; l.nonEmpty(); l = l.tail) {
                 inits.assign(initsSwitch);
                 uninits.assign(uninits.andSet(uninitsSwitch));
-                JCCase c = l.head;
-                for (JCCaseLabel pat : c.labels) {
-                    scan(pat);
-                    if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
-                        hasDefault = true;
+                for (; l.nonEmpty(); l = l.tail) {
+                    JCCase c = l.head;
+                    for (JCCaseLabel pat : c.labels) {
+                        scan(pat);
+                        if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
+                            hasDefault = true;
+                        }
                     }
+                    if (c.stats.nonEmpty())
+                        break;
                 }
+                JCCase c = l.head;
                 if (hasDefault) {
                     inits.assign(initsSwitch);
                     uninits.assign(uninits.andSet(uninitsSwitch));
                 }
                 scan(c.stats);
                 if (c.completesNormally && c.caseKind == JCCase.RULE) {
-                    scanSyntheticBreak(make, tree);
+                        scanSyntheticBreak(make, tree);
                 }
                 addVars(c.stats, initsSwitch, uninitsSwitch);
                 if (!hasDefault) {
@@ -2854,6 +2888,7 @@ public class Flow {
                             }
                             break;
                         }
+                    case GUARDPATTERN:
                     case LAMBDA:
                         if ((sym.flags() & (EFFECTIVELY_FINAL | FINAL)) == 0) {
                            reportEffectivelyFinalError(pos, sym);
@@ -2877,6 +2912,7 @@ public class Flow {
                                 reportInnerClsNeedsFinalError(tree, sym);
                                 break;
                             }
+                        case GUARDPATTERN:
                         case LAMBDA:
                             reportEffectivelyFinalError(tree, sym);
                     }
@@ -2885,8 +2921,12 @@ public class Flow {
         }
 
         void reportEffectivelyFinalError(DiagnosticPosition pos, Symbol sym) {
-            String subKey = currentTree.hasTag(LAMBDA) ?
-                  "lambda"  : "inner.cls";
+            String subKey = switch (currentTree.getTag()) {
+                case LAMBDA -> "lambda";
+                case GUARDPATTERN -> "guard";
+                case CLASSDEF -> "inner.cls";
+                default -> throw new AssertionError("Unexpected tree kind: " + currentTree.getTag());
+            };
             log.error(pos, Errors.CantRefNonEffectivelyFinalVar(sym, diags.fragment(subKey)));
         }
 
@@ -2917,6 +2957,18 @@ public class Flow {
             try {
                 currentTree = tree;
                 super.visitLambda(tree);
+            } finally {
+                currentTree = prevTree;
+            }
+        }
+
+        @Override
+        public void visitGuardPattern(JCGuardPattern tree) {
+            scan(tree.patt);
+            JCTree prevTree = currentTree;
+            try {
+                currentTree = tree;
+                scan(tree.expr);
             } finally {
                 currentTree = prevTree;
             }

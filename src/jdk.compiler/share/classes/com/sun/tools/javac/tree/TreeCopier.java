@@ -506,11 +506,10 @@ public class TreeCopier<P> implements TreeVisitor<JCTree,P> {
     }
 
     @DefinedBy(Api.COMPILER_TREE)
-    public JCTree visitAndPattern(AndPatternTree node, P p) {
-        JCAndPattern t = (JCAndPattern) node;
-        JCPattern left = copy(t.leftPattern, p);
-        JCPattern right = copy(t.rightPattern, p);
-        return M.at(t.pos).AndPattern(left, right);
+    public JCTree visitParenthesizedPattern(ParenthesizedPatternTree node, P p) {
+        JCParenthesizedPattern t = (JCParenthesizedPattern) node;
+        JCPattern pattern = copy(t.pattern, p);
+        return M.at(t.pos).ParenthesizedPattern(pattern);
     }
 
     @DefinedBy(Api.COMPILER_TREE)

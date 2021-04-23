@@ -61,6 +61,7 @@ public @interface PreviewFeature {
         // necessary for PreviewFeature in JDK 16 to declare the enum constant.
         RECORDS,
         SEALED_CLASSES,
+        SWITCH_PATTERN_MATCHING,
         /**
          * A key for testing.
          */

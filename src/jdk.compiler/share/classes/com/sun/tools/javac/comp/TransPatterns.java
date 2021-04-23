@@ -70,7 +70,6 @@ import static com.sun.tools.javac.code.TypeTag.BOT;
 import com.sun.tools.javac.jvm.PoolConstant.LoadableConstant;
 import com.sun.tools.javac.jvm.Target;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.tree.JCTree.JCAndPattern;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCBreak;
 import com.sun.tools.javac.tree.JCTree.JCCase;
@@ -80,6 +79,7 @@ import com.sun.tools.javac.tree.JCTree.JCDoWhileLoop;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCGuardPattern;
 import com.sun.tools.javac.tree.JCTree.JCLambda;
+import com.sun.tools.javac.tree.JCTree.JCParenthesizedPattern;
 import com.sun.tools.javac.tree.JCTree.JCPattern;
 import com.sun.tools.javac.tree.JCTree.JCStatement;
 import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
@@ -227,10 +227,8 @@ public class TransPatterns extends TreeTranslator {
     }
 
     @Override
-    public void visitAndPattern(JCAndPattern tree) {
-        JCExpression leftExpr = (JCExpression) this.<JCTree>translate(tree.leftPattern);
-        JCExpression rightExpr = (JCExpression) this.<JCTree>translate(tree.rightPattern);
-        result = makeBinary(Tag.AND, leftExpr, rightExpr);
+    public void visitParenthesizedPattern(JCParenthesizedPattern tree) {
+        result = translate(tree.pattern);
     }
 
     @Override
@@ -255,10 +253,19 @@ public class TransPatterns extends TreeTranslator {
                               List<JCCase> cases) {
         Type seltype = selector.type;
         //from Attr.handleSwitch:
-            boolean enumSwitch = (seltype.tsym.flags() & Flags.ENUM) != 0;
-            boolean stringSwitch = types.isSameType(seltype, syms.stringType);
-            boolean typeTestSwitch = !seltype.isPrimitive() && !types.unboxedType(seltype).hasTag(TypeTag.INT) && !enumSwitch && !stringSwitch;
+        boolean enumSwitch = (seltype.tsym.flags() & Flags.ENUM) != 0;
+        boolean stringSwitch = types.isSameType(seltype, syms.stringType);
+        boolean typeTestSwitch = !seltype.isPrimitive() && !types.unboxedType(seltype).hasTag(TypeTag.INT) && !enumSwitch && !stringSwitch;
         if (typeTestSwitch) {
+            ListBuffer<JCCase> newCases = new ListBuffer<>();
+            for (List<JCCase> c = cases; c.nonEmpty(); c = c.tail) {
+                if (c.head.stats.isEmpty() && c.tail.nonEmpty()) {
+                    c.tail.head.labels = c.tail.head.labels.prependList(c.head.labels);
+                } else {
+                    newCases.add(c.head);
+                }
+            }
+            cases = newCases.toList();
             ListBuffer<JCStatement> statements = new ListBuffer<>();
             VarSymbol temp = new VarSymbol(Flags.SYNTHETIC,
                     names.fromString(tree.pos + target.syntheticNameChar() + "temp"),
@@ -305,8 +312,8 @@ public class TransPatterns extends TreeTranslator {
 
         for (var c : cases) {
             List<JCCaseLabel> clearedPatterns = c.labels;
-            if (c.labels.size() > 1 && c.labels.head.isExpression() && TreeInfo.isNull((JCExpression) c.labels.head)) {
-                clearedPatterns = c.labels.tail;
+            if (c.labels.size() > 1 && c.labels.stream().anyMatch(l -> l.isExpression() && TreeInfo.isNull((JCExpression) l))) {
+                clearedPatterns = c.labels.stream().filter(l -> !l.isExpression() || !TreeInfo.isNull((JCExpression) l)).collect(List.collector());
                 if (clearedPatterns.head.hasTag(Tag.BINDINGPATTERN)) {
                     ((JCBindingPattern) clearedPatterns.head).nullable = true;
                 }
@@ -357,10 +364,12 @@ public class TransPatterns extends TreeTranslator {
         
         if (tree.hasTag(Tag.SWITCH)) {
             ((JCSwitch) tree).selector = selector;
+            ((JCSwitch) tree).cases = cases;
             statements.append((JCSwitch) tree);
             result = make.Block(0, statements.toList());
         } else {
             ((JCSwitchExpression) tree).selector = selector;
+            ((JCSwitchExpression) tree).cases = cases;
             LetExpr r = (LetExpr) make.LetExpr(statements.toList(), (JCSwitchExpression) tree).setType(tree.type);
 
             r.needsCond = true;
@@ -378,7 +387,7 @@ public class TransPatterns extends TreeTranslator {
     private JCBindingPattern principalBinding(JCCaseLabel p) {
         return switch (p.getTag()) {
             case BINDINGPATTERN -> (JCBindingPattern) p;
-            case ANDPATTERN -> principalBinding(((JCAndPattern) p).leftPattern);
+            case PARENTHESIZEDPATTERN -> principalBinding(((JCParenthesizedPattern) p).pattern);
             case GUARDPATTERN -> principalBinding(((JCGuardPattern) p).patt);
             default -> null;
         };

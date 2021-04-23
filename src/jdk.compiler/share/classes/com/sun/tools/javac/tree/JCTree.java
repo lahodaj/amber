@@ -240,10 +240,9 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         /** Patterns.
          */
         BINDINGPATTERN,
-        EXPRESSIONPATTERN,
         DEFAULTCASELABEL,
-        ANDPATTERN,
         GUARDPATTERN,
+        PARENTHESIZEDPATTERN,
 
         /** Indexed array expressions, of type Indexed.
          */
@@ -2289,45 +2288,38 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
 
     }
 
-    public static class JCAndPattern extends JCPattern
-            implements AndPatternTree {
-        public JCPattern leftPattern;
-        public JCPattern rightPattern;
+    public static class JCParenthesizedPattern extends JCPattern
+            implements ParenthesizedPatternTree {
+        public JCPattern pattern;
 
-        public JCAndPattern(JCPattern leftPattern, JCPattern rightPattern) {
-            this.leftPattern = leftPattern;
-            this.rightPattern = rightPattern;
+        public JCParenthesizedPattern(JCPattern pattern) {
+            this.pattern = pattern;
         }
 
         @Override @DefinedBy(Api.COMPILER_TREE)
-        public PatternTree getLeftPattern() {
-            return leftPattern;
-        }
-
-        @Override @DefinedBy(Api.COMPILER_TREE)
-        public PatternTree getRightPattern() {
-            return rightPattern;
+        public PatternTree getPattern() {
+            return pattern;
         }
 
         @Override
         public void accept(Visitor v) {
-            v.visitAndPattern(this);
+            v.visitParenthesizedPattern(this);
         }
 
         @DefinedBy(Api.COMPILER_TREE)
         public Kind getKind() {
-            return Kind.AND_PATTERN;
+            return Kind.PARENTHESIZED_PATTERN;
         }
 
         @Override
         @DefinedBy(Api.COMPILER_TREE)
         public <R, D> R accept(TreeVisitor<R, D> v, D d) {
-            return v.visitAndPattern(this, d);
+            return v.visitParenthesizedPattern(this, d);
         }
 
         @Override
         public Tag getTag() {
-            return ANDPATTERN;
+            return PARENTHESIZEDPATTERN;
         }
     }
 
@@ -3414,7 +3406,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public void visitTypeTest(JCInstanceOf that)         { visitTree(that); }
         public void visitBindingPattern(JCBindingPattern that) { visitTree(that); }
         public void visitDefaultCaseLabel(JCDefaultCaseLabel that) { visitTree(that); }
-        public void visitAndPattern(JCAndPattern that) { visitTree(that); }
+        public void visitParenthesizedPattern(JCParenthesizedPattern that) { visitTree(that); }
         public void visitGuardPattern(JCGuardPattern that) { visitTree(that); }
         public void visitIndexed(JCArrayAccess that)         { visitTree(that); }
         public void visitSelect(JCFieldAccess that)          { visitTree(that); }

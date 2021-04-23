@@ -1134,8 +1134,8 @@ public class Annotate {
         }
 
         @Override
-        public void visitAndPattern(JCAndPattern that) {
-            //TODO:
+        public void visitParenthesizedPattern(JCParenthesizedPattern tree) {
+            scan(tree.pattern);
         }
 
         @Override

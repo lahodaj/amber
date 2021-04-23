@@ -312,9 +312,8 @@ public class TreeScanner extends Visitor {
     }
 
     @Override
-    public void visitAndPattern(JCAndPattern that) {
-        scan(that.leftPattern);
-        scan(that.rightPattern);
+    public void visitParenthesizedPattern(JCParenthesizedPattern that) {
+        scan(that.pattern);
     }
 
     @Override

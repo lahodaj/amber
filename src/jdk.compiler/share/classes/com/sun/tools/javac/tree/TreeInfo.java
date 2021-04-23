@@ -538,10 +538,6 @@ public class TreeInfo {
                 JCBindingPattern node = (JCBindingPattern)tree;
                 return getStartPos(node.var);
             }
-            case ANDPATTERN: {
-                JCAndPattern node = (JCAndPattern) tree;
-                return getStartPos(node.leftPattern);
-            }
             case GUARDPATTERN: {
                 JCGuardPattern node = (JCGuardPattern) tree;
                 return getStartPos(node.patt);
@@ -635,9 +631,9 @@ public class TreeInfo {
                 return getEndPos(((JCWhileLoop) tree).body, endPosTable);
             case ANNOTATED_TYPE:
                 return getEndPos(((JCAnnotatedType) tree).underlyingType, endPosTable);
-            case ANDPATTERN: {
-                JCAndPattern node = (JCAndPattern) tree;
-                return getEndPos(node.rightPattern, endPosTable);
+            case PARENTHESIZEDPATTERN: {
+                JCParenthesizedPattern node = (JCParenthesizedPattern) tree;
+                return getEndPos(node.pattern, endPosTable);
             }
             case GUARDPATTERN: {
                 JCGuardPattern node = (JCGuardPattern) tree;
