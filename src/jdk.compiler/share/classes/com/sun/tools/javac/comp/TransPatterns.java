@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,6 +28,8 @@ package com.sun.tools.javac.comp;
 import com.sun.source.tree.CaseTree;
 import com.sun.tools.javac.code.BoundKind;
 import com.sun.tools.javac.code.Flags;
+import com.sun.tools.javac.code.Kinds;
+import com.sun.tools.javac.code.Kinds.Kind;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symbol.BindingSymbol;
 import com.sun.tools.javac.code.Symbol.DynamicMethodSymbol;
@@ -181,20 +183,29 @@ public class TransPatterns extends TreeTranslator {
             //E instanceof T N
             //=>
             //(let T' N$temp = E; N$temp instanceof T && (N = (T) N$temp == (T) N$temp))
+            Symbol exprSym = TreeInfo.symbol(tree.expr);
             Type tempType = tree.expr.type.hasTag(BOT) ?
                     syms.objectType
                     : tree.expr.type;
             VarSymbol prevCurrentValue = currentValue;
             try {
-                currentValue = new VarSymbol(Flags.FINAL | Flags.SYNTHETIC,
-                        names.fromString(tree.pos + target.syntheticNameChar() + "temp"),
-                        tempType,
-                        currentMethodSym); //XXX: currentMethodSym
+                if (exprSym != null &&
+                    exprSym.kind == Kind.VAR &&
+                    exprSym.owner.kind.matches(Kinds.KindSelector.VAL_MTH)) {
+                    currentValue = (VarSymbol) exprSym;
+                } else {
+                    currentValue = new VarSymbol(Flags.FINAL | Flags.SYNTHETIC,
+                            names.fromString("patt" + tree.pos + target.syntheticNameChar() + "temp"),
+                            tempType,
+                            currentMethodSym); //XXX: currentMethodSym
+                }
 
                 JCExpression translatedExpr = translate(tree.expr);
                 result = translate(tree.pattern);
-                result = make.at(tree.pos).LetExpr(make.VarDef(currentValue, translatedExpr), (JCExpression)result).setType(syms.booleanType);
-                ((LetExpr) result).needsCond = true;
+                if (currentValue != exprSym) {
+                    result = make.at(tree.pos).LetExpr(make.VarDef(currentValue, translatedExpr), (JCExpression)result).setType(syms.booleanType);
+                    ((LetExpr) result).needsCond = true;
+                }
             } finally {
                 currentValue = prevCurrentValue;
             }
@@ -268,7 +279,7 @@ public class TransPatterns extends TreeTranslator {
             cases = newCases.toList();
             ListBuffer<JCStatement> statements = new ListBuffer<>();
             VarSymbol temp = new VarSymbol(Flags.SYNTHETIC,
-                    names.fromString(tree.pos + target.syntheticNameChar() + "temp"),
+                    names.fromString("selector" + tree.pos + target.syntheticNameChar() + "temp"),
                     seltype,
                     currentMethodSym); //XXX:owner - verify field inits!
             boolean hasNullCase = cases.stream().flatMap(c -> c.labels.stream()).anyMatch(p -> p.isExpression() && TreeInfo.isNull((JCExpression) p));

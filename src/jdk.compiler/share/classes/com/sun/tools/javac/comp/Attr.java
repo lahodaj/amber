@@ -1657,6 +1657,7 @@ public class Attr extends JCTree.Visitor {
         try {
             boolean enumSwitch = (seltype.tsym.flags() & Flags.ENUM) != 0;
             boolean stringSwitch = types.isSameType(seltype, syms.stringType);
+            boolean errorEnumSwitch = TreeInfo.isErrorEnumSwitch(selector, cases);
             //TODO: should check source level here, and reject seltype != int/String/enum iff not the new source level:
             //this is wrong - pattern matching switches are determined based on the form of the cases, not based on the type of the selector!
 //            boolean typeTestSwitch = cases.stream().flatMap(c -> c.labels.stream()).anyMatch(l -> !l.isExpression() && !l.hasTag(DEFAULTCASELABEL));
@@ -1706,6 +1707,17 @@ public class Attr extends JCTree.Visitor {
                                 log.error(expr.pos(), Errors.EnumLabelMustBeUnqualifiedEnum);
                             } else if (!labels.add(sym)) {
                                 log.error(c.pos(), Errors.DuplicateCaseLabel);
+                            }
+                        } else if (errorEnumSwitch) {
+                            //error recovery: the selector is erroneous, and all the case labels
+                            //are identifiers. This could be an enum switch - don't report resolve
+                            //error for the case label:
+                            var prevResolveHelper = rs.basicLogResolveHelper;
+                            try {
+                                rs.basicLogResolveHelper = rs.silentLogResolveHelper;
+                                attribExpr(pat, switchEnv, seltype);
+                            } finally {
+                                rs.basicLogResolveHelper = prevResolveHelper;
                             }
                         } else {
                             Type pattype = attribExpr(expr, switchEnv, seltype);
@@ -3867,7 +3879,7 @@ public class Attr extends JCTree.Visitor {
         Type owntype = attribTree(tree.expr, env, resultInfo);
         result = check(tree, owntype, pkind(), resultInfo);
         Symbol sym = TreeInfo.symbol(tree);
-        if (sym != null && sym.kind.matches(KindSelector.TYP_PCK))
+        if (sym != null && sym.kind.matches(KindSelector.TYP_PCK) && sym.kind != Kind.ERR)
             log.error(tree.pos(), Errors.IllegalParenthesizedExpression);
     }
 
@@ -4027,7 +4039,7 @@ public class Attr extends JCTree.Visitor {
             clazztype = tree.pattern.type;
             if (types.isSubtype(exprtype, clazztype) &&
                 !exprtype.isErroneous() && !clazztype.isErroneous()) {
-                log.error(tree.pos(), Errors.InstanceofPatternNoSubtype(clazztype, exprtype));
+                log.error(tree.pos(), Errors.InstanceofPatternNoSubtype(exprtype, clazztype));
             }
             JCBindingPattern pattern = (JCBindingPattern) tree.pattern;
             typeTree = pattern.var.vartype;

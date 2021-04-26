@@ -704,6 +704,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
 
     public static abstract class JCCaseLabel extends JCTree implements CaseLabelTree {
         public abstract boolean isExpression();
+        public abstract boolean isPattern();
     }
 
     public static abstract class JCExpression extends JCCaseLabel implements ExpressionTree {
@@ -726,6 +727,10 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
             return true;
         }
 
+        @Override
+        public boolean isPattern() {
+            return false;
+        }
     }
 
     /**
@@ -1259,6 +1264,8 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
     public static class JCSwitch extends JCStatement implements SwitchTree {
         public JCExpression selector;
         public List<JCCase> cases;
+        /** Position of closing brace, optional. */
+        public int endpos = Position.NOPOS;
         protected JCSwitch(JCExpression selector, List<JCCase> cases) {
             this.selector = selector;
             this.cases = cases;
@@ -2216,6 +2223,11 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public boolean isExpression() {
             return false;
         }
+
+        @Override
+        public boolean isPattern() {
+            return true;
+        }
     }
 
     public static class JCBindingPattern extends JCPattern
@@ -2286,6 +2298,10 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
             return false;
         }
 
+        @Override
+        public boolean isPattern() {
+            return false;
+        }
     }
 
     public static class JCParenthesizedPattern extends JCPattern

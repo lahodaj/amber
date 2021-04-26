@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -722,7 +722,7 @@ public class Flow {
                             JCExpression expr = (JCExpression) pat;
                             if (expr.hasTag(IDENT))
                                 constants.remove(((JCIdent) expr).name);
-                        } else {
+                        } else if (pat.isPattern()) {
                             constants.remove(patternType((JCTree.JCPattern) pat));
                         }
                     }
@@ -749,7 +749,8 @@ public class Flow {
                 }
                 c.completesNormally = alive != Liveness.DEAD;
             }
-            if ((constants == null || !constants.isEmpty()) && !hasDefault && !coversInput) {
+            if ((constants == null || !constants.isEmpty()) && !hasDefault && !coversInput &&
+                !TreeInfo.isErrorEnumSwitch(tree.selector, tree.cases)) {
                 log.error(tree, Errors.NotExhaustive);
             }
             alive = prevAlive;
@@ -2401,18 +2402,20 @@ public class Flow {
             for (List<JCCase> l = cases; l.nonEmpty(); l = l.tail) {
                 inits.assign(initsSwitch);
                 uninits.assign(uninits.andSet(uninitsSwitch));
-                for (; l.nonEmpty(); l = l.tail) {
-                    JCCase c = l.head;
-                    for (JCCaseLabel pat : c.labels) {
-                        scan(pat);
-                        if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
-                            hasDefault = true;
-                        }
-                    }
-                    if (c.stats.nonEmpty())
-                        break;
-                }
                 JCCase c = l.head;
+                for (JCCaseLabel pat : c.labels) {
+                    scan(pat);
+                    if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
+                        hasDefault = true;
+                    }
+                }
+                //XXX: handling:
+                //case Integer i:
+                //case null:
+                //there should be a better way?
+                if (l.tail.nonEmpty() && l.tail.head.labels.size() == 1 && l.tail.head.labels.head.isExpression() && TreeInfo.isNull(l.tail.head.labels.head) && l.head.stats.isEmpty()) {
+                    l = l.tail;
+                }
                 if (hasDefault) {
                     inits.assign(initsSwitch);
                     uninits.assign(uninits.andSet(uninitsSwitch));
