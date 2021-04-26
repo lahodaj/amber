@@ -27,6 +27,8 @@ package com.sun.source.tree;
 
 import java.util.List;
 
+import jdk.internal.javac.PreviewFeature;
+
 /**
  * A tree node for a {@code case} in a {@code switch} statement or expression.
  *
@@ -67,10 +69,12 @@ public interface CaseTree extends Tree {
 
     /**
      * Returns the labels for this case.
-     * For default case, returns an empty list.
+     * For {@code default} case return a list with a single element, {@link DefaultCaseLabelTree}.
      *
      * @return labels for this case
+     * @since 17
      */
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
     List<? extends CaseLabelTree> getLabels();
 
     /**

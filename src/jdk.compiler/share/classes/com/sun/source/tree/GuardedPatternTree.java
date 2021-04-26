@@ -25,20 +25,15 @@
 
 package com.sun.source.tree;
 
+import jdk.internal.javac.PreviewFeature;
+
 /**
- * {@preview Associated with pattern matching for instanceof, a preview feature of
- *           the Java language.
+ * A guard pattern tree.
  *
- *           This interface is associated with <i>pattern matching for instanceof</i>, a preview
- *           feature of the Java language. Preview features
- *           may be removed in a future release, or upgraded to permanent
- *           features of the Java language.}
- *
- * A guard pattern tree
- *
- * @since 15
+ * @since 17
  */
-public interface GuardPatternTree extends PatternTree {
+@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+public interface GuardedPatternTree extends PatternTree {
 
     /**
      * The guarded pattern expression.
@@ -53,4 +48,3 @@ public interface GuardPatternTree extends PatternTree {
     public ExpressionTree getExpression();
 
 }
-

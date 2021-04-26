@@ -34,6 +34,8 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+import jdk.internal.javac.PreviewFeature;
+
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -46,7 +48,10 @@ import static java.util.Objects.requireNonNull;
  * operand of the {@code switch}, and return an {@code int} that is the index of
  * the matched {@code case} label, {@code -1} if the target is {@code null},
  * or {@code N} if the target is not null but matches no {@code case} label.
+ *
+ * @since 17
  */
+@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
 public class SwitchBootstraps {
 
     private SwitchBootstraps() {}

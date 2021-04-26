@@ -25,6 +25,8 @@
 
 package com.sun.source.tree;
 
+import jdk.internal.javac.PreviewFeature;
+
 /**
  * A tree node for a parenthesized pattern.
  *
@@ -37,6 +39,7 @@ package com.sun.source.tree;
  *
  * @since 17
  */
+@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
 public interface ParenthesizedPatternTree extends PatternTree {
     /**
      * Returns the pattern within the parentheses.

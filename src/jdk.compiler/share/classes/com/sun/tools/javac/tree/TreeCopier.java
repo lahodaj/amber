@@ -498,7 +498,7 @@ public class TreeCopier<P> implements TreeVisitor<JCTree,P> {
     }
 
     @DefinedBy(Api.COMPILER_TREE)
-    public JCTree visitGuardPattern(GuardPatternTree node, P p) {
+    public JCTree visitGuardedPattern(GuardedPatternTree node, P p) {
         JCGuardPattern t = (JCGuardPattern) node;
         JCPattern patt = copy(t.patt, p);
         JCExpression expr = copy(t.expr, p);

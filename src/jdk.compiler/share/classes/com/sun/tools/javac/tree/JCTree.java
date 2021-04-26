@@ -2340,7 +2340,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
     }
 
     public static class JCGuardPattern extends JCPattern
-            implements GuardPatternTree {
+            implements GuardedPatternTree {
         public JCPattern patt;
         public JCExpression expr;
 
@@ -2372,7 +2372,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         @Override
         @DefinedBy(Api.COMPILER_TREE)
         public <R, D> R accept(TreeVisitor<R, D> v, D d) {
-            return v.visitGuardPattern(this, d);
+            return v.visitGuardedPattern(this, d);
         }
 
         @Override

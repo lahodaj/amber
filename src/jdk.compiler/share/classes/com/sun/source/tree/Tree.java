@@ -25,6 +25,8 @@
 
 package com.sun.source.tree;
 
+import jdk.internal.javac.PreviewFeature;
+
 /**
  * Common interface for all nodes in an abstract syntax tree.
  *
@@ -225,9 +227,29 @@ public interface Tree {
          * @since 16
          */
         BINDING_PATTERN(BindingPatternTree.class),
-        
-        GUARD_PATTERN(GuardPatternTree.class),
+
+        /**
+         * Used for instances of {@link GuardedPatternTree}.
+         *
+         * @since 17
+         */
+        @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+        GUARD_PATTERN(GuardedPatternTree.class),
+
+        /**
+         * Used for instances of {@link ParenthesizedPatternTree}.
+         *
+         * @since 17
+         */
+        @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
         PARENTHESIZED_PATTERN(ParenthesizedPatternTree.class),
+
+        /**
+         * Used for instances of {@link DefaultCaseLabelTree}.
+         *
+         * @since 17
+         */
+        @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
         DEFAULT_CASE_LABEL(DefaultCaseLabelTree.class),
 
         /**

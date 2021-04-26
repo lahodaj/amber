@@ -26,6 +26,7 @@
 package com.sun.source.util;
 
 import com.sun.source.tree.*;
+import jdk.internal.javac.PreviewFeature;
 
 /**
  * A simple visitor for tree nodes.
@@ -564,7 +565,16 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
         return defaultAction(node, p);
     }
 
+    /**
+     * {@inheritDoc} This implementation calls {@code defaultAction}.
+     *
+     * @param node {@inheritDoc}
+     * @param p {@inheritDoc}
+     * @return  the result of {@code defaultAction}
+     * @since 17
+     */
     @Override
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
     public R visitDefaultCaseLabel(DefaultCaseLabelTree node, P p) {
         return defaultAction(node, p);
     }
@@ -602,6 +612,7 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
      * @since 17
      */
     @Override
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
     public R visitParenthesizedPattern(ParenthesizedPatternTree node, P p) {
         return defaultAction(node, p);
     }
@@ -612,10 +623,11 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
      * @param node {@inheritDoc}
      * @param p {@inheritDoc}
      * @return  the result of {@code defaultAction}
-     * @since 15
+     * @since 17
      */
     @Override
-    public R visitGuardPattern(GuardPatternTree node, P p) {
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    public R visitGuardedPattern(GuardedPatternTree node, P p) {
         return defaultAction(node, p);
     }
 

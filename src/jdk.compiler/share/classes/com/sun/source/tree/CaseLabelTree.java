@@ -25,7 +25,11 @@
 
 package com.sun.source.tree;
 
+import jdk.internal.javac.PreviewFeature;
+
 /**A marker interface for {@code Tree}s that may be used as {@link CaseTree} labels.
+ *
+ * @since 17
  */
-//TODO: @since
+@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
 public interface CaseLabelTree extends Tree {}
