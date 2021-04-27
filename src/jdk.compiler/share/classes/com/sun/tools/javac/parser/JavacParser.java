@@ -991,7 +991,7 @@ public class JavacParser implements Parser {
                     int typePos = token.pos;
                     JCExpression type = unannotatedType(false);
                     if (token.kind == IDENTIFIER) {
-                        checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                        checkSourceLevel(token.pos, Feature.PATTERN_SWITCH);
                         pattern = parsePattern(mods, type, true);
                     } else {
                         checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
@@ -3096,8 +3096,7 @@ public class JavacParser implements Parser {
             //XXX: modifiers!
             JCExpression e = term(EXPR | TYPE | NOLAMBDA);
             if (token.kind == IDENTIFIER) {
-                //XXX: check source level
-                checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
+                checkSourceLevel(token.pos, Feature.PATTERN_SWITCH);
                 label = parsePattern(null, e, false);
                 wrapper = (wrap, wrapPos) -> F.at(wrapPos).ParenthesizedPattern((JCPattern) wrap);
             } else {

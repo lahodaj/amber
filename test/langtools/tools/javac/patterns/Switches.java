@@ -50,6 +50,7 @@ public class Switches {
         assertEquals(2, mapper.apply("2"));
         assertEquals(3, mapper.apply("3"));
         assertEquals(8, mapper.apply(new StringBuilder("4")));
+        assertEquals(-3, mapper.apply("A"));
         assertEquals(2, mapper.apply(2));
         assertEquals(3, mapper.apply(3));
         assertEquals(-1, mapper.apply(2.0));
@@ -71,6 +72,7 @@ public class Switches {
 
     int typeTestPatternSwitchTest(Object o) {
         switch (o) {
+            case "A": return -3;
             case String s: return Integer.parseInt(s.toString());
             case CharSequence s: return 2 * Integer.parseInt(s.toString());
             case Integer i: return i;
@@ -81,6 +83,7 @@ public class Switches {
 
     int typeTestPatternSwitchExpressionTest(Object o) {
         return switch (o) {
+            case "A" -> -3;
             case String s -> Integer.parseInt(s.toString());
             case CharSequence s -> { yield 2 * Integer.parseInt(s.toString()); }
             case Integer i -> i;
@@ -92,6 +95,11 @@ public class Switches {
     int testBooleanSwitchExpression(Object o) {
         Object x;
         if (switch (o) {
+            case "A" -> true;
+            default -> false;
+        }) {
+            return -3;
+        } else if (switch (o) {
             case String s -> (x = s) != null;
             default -> false;
         }) {

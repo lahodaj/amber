@@ -88,6 +88,7 @@ import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
 import com.sun.tools.javac.tree.JCTree.JCUnary;
 import com.sun.tools.javac.tree.JCTree.LetExpr;
 import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
 import java.util.HashMap;
 
@@ -296,7 +297,12 @@ public class TransPatterns extends TreeTranslator {
                                                                   List.of(new WildcardType(syms.objectType, BoundKind.UNBOUND,
                                                                                            syms.boundClass)),
                                                                   syms.classType.tsym)));
-            LoadableConstant[] staticArgValues = cases.stream().flatMap(c -> c.labels.stream()).map(p -> principalBinding(p)).filter(p -> p != null).map(p -> p.var.sym.type).toArray(s -> new LoadableConstant[s]);
+            LoadableConstant[] staticArgValues =
+                    cases.stream()
+                         .flatMap(c -> c.labels.stream())
+                         .map(l -> toLoadableConstant(l))
+                         .filter(c -> c != null)
+                         .toArray(s -> new LoadableConstant[s]);
 
             Symbol bsm = rs.resolveInternalMethod(tree.pos(), env, syms.switchBootstrapsType,
                     names.fromString("typeSwitch"), staticArgTypes, List.nil());
@@ -354,7 +360,7 @@ public class TransPatterns extends TreeTranslator {
                     translatedLabels.add(p);
                 } else {
                     int value;
-                    if (principalBinding(p) != null) {
+                    if (p.isPattern() || (p.isExpression() && !TreeInfo.isNull((JCExpression) p))) {
                         value = i++;
                     } else {
                         value = -1;
@@ -402,6 +408,22 @@ public class TransPatterns extends TreeTranslator {
             case GUARDPATTERN -> principalBinding(((JCGuardPattern) p).patt);
             default -> null;
         };
+    }
+
+    private LoadableConstant toLoadableConstant(JCCaseLabel l) {
+        if (l.isPattern()) {
+            return (LoadableConstant) principalBinding(l).var.sym.type;
+        } else if (l.isExpression() && !TreeInfo.isNull((JCExpression) l)) {
+            Assert.checkNonNull(l.type.constValue());
+
+            return switch (l.type.getTag()) {
+                case INT -> LoadableConstant.Int((Integer) l.type.constValue());
+                case CLASS -> LoadableConstant.String((String) l.type.constValue());
+                default -> throw new AssertionError();
+            };
+        } else {
+            return null;
+        }
     }
 
     @Override

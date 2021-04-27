@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -82,7 +82,8 @@ public class SwitchBootstraps {
     /**
      * Bootstrap method for linking an {@code invokedynamic} call site that
      * implements a {@code switch} on a reference-typed target.  The static
-     * arguments are a varargs array of {@code Class} labels.
+     * arguments are a varargs array of case labels. Constants and {@code Class}
+     * instances are accepted
      *
      * @param lookup Represents a lookup context with the accessibility
      *               privileges of the caller.  When used with {@code invokedynamic},
@@ -97,7 +98,7 @@ public class SwitchBootstraps {
      *                       used with {@code invokedynamic}, this is provided by
      *                       the {@code NameAndType} of the {@code InvokeDynamic}
      *                       structure and is stacked automatically by the VM.
-     * @param types non-null {@link Class} values
+     * @param labels non-null case labels - constants and {@code Class} instances
      * @return the index into {@code labels} of the target value, if the target
      *         is an instance of any of the types, {@literal -1} if the target
      *         value is {@code null}, or {@code types.length} if the target value
@@ -110,30 +111,30 @@ public class SwitchBootstraps {
     public static CallSite typeSwitch(MethodHandles.Lookup lookup,
                                       String invocationName,
                                       MethodType invocationType,
-                                      Class<?>... types) throws Throwable {
+                                      Object... labels) throws Throwable {
         if (invocationType.parameterCount() != 2
             || (!invocationType.returnType().equals(int.class))
             || invocationType.parameterType(0).isPrimitive())
             throw new IllegalArgumentException("Illegal invocation type " + invocationType);
-        requireNonNull(types);
+        requireNonNull(labels);
 
-        types = types.clone();
-        if (Stream.of(types).anyMatch(Objects::isNull))
+        labels = labels.clone();
+        if (Stream.of(labels).anyMatch(Objects::isNull))
             throw new IllegalArgumentException("null label found");
 
-        assert Stream.of(types).distinct().count() == types.length
-                : "switch labels are not distinct: " + Arrays.toString(types);
+        assert Stream.of(labels).distinct().count() == labels.length
+                : "switch labels are not distinct: " + Arrays.toString(labels);
 
-        return new TypeSwitchCallSite(invocationType, types);
+        return new TypeSwitchCallSite(invocationType, labels);
     }
 
     static class TypeSwitchCallSite extends ConstantCallSite {
-        private final Class<?>[] types;
+        private final Object[] labels;
 
         TypeSwitchCallSite(MethodType targetType,
-                           Class<?>[] types) throws Throwable {
+                           Object[] labels) throws Throwable {
             super(targetType, TYPE_INIT_HOOK);
-            this.types = types;
+            this.labels = labels;
         }
 
         int doSwitch(Object target, int startIndex) {
@@ -142,13 +143,19 @@ public class SwitchBootstraps {
 
             // Dumbest possible strategy
             Class<?> targetClass = target.getClass();
-            for (int i = startIndex; i < types.length; i++) {
-                Class<?> c = types[i];
-                if (c.isAssignableFrom(targetClass))
-                    return i;
+            for (int i = startIndex; i < labels.length; i++) {
+                if (labels[i] instanceof Class<?>) {
+                    Class<?> c = (Class<?>) labels[i];
+                    if (c.isAssignableFrom(targetClass))
+                        return i;
+                } else {
+                    if (Objects.equals(labels[i], target)) {
+                        return i;
+                    }
+                }
             }
 
-            return types.length;
+            return labels.length;
         }
     }
 
