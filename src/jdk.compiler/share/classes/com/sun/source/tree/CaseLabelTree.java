@@ -31,5 +31,5 @@ import jdk.internal.javac.PreviewFeature;
  *
  * @since 17
  */
-@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
 public interface CaseLabelTree extends Tree {}

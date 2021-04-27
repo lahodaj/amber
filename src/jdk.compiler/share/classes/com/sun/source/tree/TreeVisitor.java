@@ -275,7 +275,7 @@ public interface TreeVisitor<R,P> {
      * @return a result value
      * @since 17
      */
-    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
     R visitDefaultCaseLabel(DefaultCaseLabelTree node, P p);
     
     /**
@@ -309,7 +309,7 @@ public interface TreeVisitor<R,P> {
      * @return a result value
      * @since 15
      */
-    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
     R visitGuardedPattern(GuardedPatternTree node, P p);
 
     /**
@@ -319,7 +319,7 @@ public interface TreeVisitor<R,P> {
      * @return a result value
      * @since 17
      */
-    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
     R visitParenthesizedPattern(ParenthesizedPatternTree node, P p);
 
     /**

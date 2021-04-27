@@ -74,7 +74,7 @@ public interface CaseTree extends Tree {
      * @return labels for this case
      * @since 17
      */
-    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
     List<? extends CaseLabelTree> getLabels();
 
     /**

@@ -29,5 +29,5 @@ import jdk.internal.javac.PreviewFeature;
 /** A case label that marks {@code default} in {@code case null, default}.
  * @since 17
  */
-@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+@PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
 public interface DefaultCaseLabelTree extends CaseLabelTree {}

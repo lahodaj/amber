@@ -574,7 +574,7 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
      * @since 17
      */
     @Override
-    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
     public R visitDefaultCaseLabel(DefaultCaseLabelTree node, P p) {
         return defaultAction(node, p);
     }
@@ -612,7 +612,7 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
      * @since 17
      */
     @Override
-    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
     public R visitParenthesizedPattern(ParenthesizedPatternTree node, P p) {
         return defaultAction(node, p);
     }
@@ -626,7 +626,7 @@ public class SimpleTreeVisitor <R,P> implements TreeVisitor<R,P> {
      * @since 17
      */
     @Override
-    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING)
+    @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
     public R visitGuardedPattern(GuardedPatternTree node, P p) {
         return defaultAction(node, p);
     }
