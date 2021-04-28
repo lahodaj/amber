@@ -779,6 +779,7 @@ public class JavacParser implements Parser {
             JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));
             pattern = toP(F.at(pos).BindingPattern(var));
             if (!inInstanceOf && token.kind == AMPAMP) {
+                checkSourceLevel(Feature.PATTERN_SWITCH);
                 nextToken();
                 JCExpression guard = term(EXPR | NOLAMBDA);
                 pattern = F.at(pos).GuardPattern(pattern, guard);
@@ -986,13 +987,14 @@ public class JavacParser implements Parser {
                 nextToken();
                 JCTree pattern;
                 if (token.kind == LPAREN) {
+                    checkSourceLevel(token.pos, Feature.PATTERN_SWITCH);
                     pattern = parsePattern(null, null, true);
                 } else {
                     JCModifiers mods = optFinal(0);
                     int typePos = token.pos;
                     JCExpression type = unannotatedType(false);
                     if (token.kind == IDENTIFIER) {
-                        checkSourceLevel(token.pos, Feature.PATTERN_SWITCH);
+                        checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
                         pattern = parsePattern(mods, type, true);
                     } else {
                         checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
