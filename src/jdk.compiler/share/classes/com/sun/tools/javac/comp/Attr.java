@@ -437,8 +437,8 @@ public class Attr extends JCTree.Visitor {
         } catch (BreakAttr b) {
             return b.env;
         } catch (AssertionError ae) {
-            if (ae.getCause() instanceof BreakAttr) {
-                return ((BreakAttr)(ae.getCause())).env;
+            if (ae.getCause() instanceof BreakAttr breakAttr) {
+                return breakAttr.env;
             } else {
                 throw ae;
             }
@@ -1543,6 +1543,15 @@ public class Attr extends JCTree.Visitor {
                     elemtype = iterableParams.isEmpty()
                         ? syms.objectType
                         : types.wildUpperBound(iterableParams.head);
+
+                    // Check the return type of the method iterator().
+                    // This is the bare minimum we need to verify to make sure code generation doesn't crash.
+                    Symbol iterSymbol = rs.resolveInternalMethod(tree.pos(),
+                            loopEnv, exprType, names.iterator, List.nil(), List.nil());
+                    if (types.asSuper(iterSymbol.type.getReturnType(), syms.iteratorType.tsym) == null) {
+                        log.error(tree.pos(),
+                                Errors.ForeachNotApplicableToType(exprType, Fragments.TypeReqArrayOrIterable));
+                    }
                 }
             }
             if (tree.var.isImplicitlyTyped()) {
@@ -2035,7 +2044,7 @@ public class Attr extends JCTree.Visitor {
         }
         //where
             boolean primitiveOrBoxed(Type t) {
-                return (!t.hasTag(TYPEVAR) && types.unboxedTypeOrType(t).isPrimitive());
+                return (!t.hasTag(TYPEVAR) && !t.isErroneous() && types.unboxedTypeOrType(t).isPrimitive());
             }
 
             TreeTranslator removeClassParams = new TreeTranslator() {
@@ -2129,7 +2138,7 @@ public class Attr extends JCTree.Visitor {
                         .collect(List.collector()));
         }
 
-    final static TypeTag[] primitiveTags = new TypeTag[]{
+    static final TypeTag[] primitiveTags = new TypeTag[]{
         BYTE,
         CHAR,
         SHORT,
@@ -4034,6 +4043,7 @@ public class Attr extends JCTree.Visitor {
                 tree.expr.pos(), attribExpr(tree.expr, env));
         Type clazztype;
         JCTree typeTree;
+        boolean checkRawTypes;
         if (tree.pattern.getTag() == BINDINGPATTERN) {
             attribTree(tree.pattern, env, unknownExprInfo);
             clazztype = tree.pattern.type;
@@ -4046,9 +4056,11 @@ public class Attr extends JCTree.Visitor {
             if (!clazztype.hasTag(TYPEVAR)) {
                 clazztype = chk.checkClassOrArrayType(pattern.var.vartype.pos(), clazztype);
             }
+            checkRawTypes = true;
         } else {
             clazztype = attribType(tree.pattern, env);
             typeTree = tree.pattern;
+            checkRawTypes = false;
         }
         if (!clazztype.hasTag(TYPEVAR)) {
             clazztype = chk.checkClassOrArrayType(typeTree.pos(), clazztype);
@@ -4078,7 +4090,7 @@ public class Attr extends JCTree.Visitor {
                 clazztype = types.createErrorType(clazztype);
             }
         }
-        chk.validate(typeTree, env, false);
+        chk.validate(typeTree, env, checkRawTypes);
         chk.checkCastable(tree.expr.pos(), exprtype, clazztype);
         result = check(tree, syms.booleanType, KindSelector.VAL, resultInfo);
     }
@@ -5577,8 +5589,7 @@ public class Attr extends JCTree.Visitor {
         public void visitMethodDef(JCMethodDecl tree) {
             if (tree.recvparam != null &&
                     !tree.recvparam.vartype.type.isErroneous()) {
-                checkForDeclarationAnnotations(tree.recvparam.mods.annotations,
-                        tree.recvparam.vartype.type.tsym);
+                checkForDeclarationAnnotations(tree.recvparam.mods.annotations, tree.recvparam.sym);
             }
             if (tree.restype != null && tree.restype.type != null) {
                 validateAnnotatedType(tree.restype, tree.restype.type);

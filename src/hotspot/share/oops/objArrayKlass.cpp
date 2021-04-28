@@ -320,8 +320,7 @@ Klass* ObjArrayKlass::array_klass_impl(bool or_null, int n, TRAPS) {
   if (higher_dimension_acquire() == NULL) {
     if (or_null) return NULL;
 
-    ResourceMark rm;
-    JavaThread *jt = THREAD->as_Java_thread();
+    ResourceMark rm(THREAD);
     {
       // Ensure atomic creation of higher dimensions
       MutexLocker mu(THREAD, MultiArray_lock);
@@ -345,7 +344,7 @@ Klass* ObjArrayKlass::array_klass_impl(bool or_null, int n, TRAPS) {
   if (or_null) {
     return ak->array_klass_or_null(n);
   }
-  THREAD->check_possible_safepoint();
+  THREAD->as_Java_thread()->check_possible_safepoint();
   return ak->array_klass(n, THREAD);
 }
 
@@ -396,16 +395,14 @@ void ObjArrayKlass::metaspace_pointers_do(MetaspaceClosure* it) {
   it->push(&_bottom_klass);
 }
 
-// JVM support
-
-jint ObjArrayKlass::compute_modifier_flags(TRAPS) const {
+jint ObjArrayKlass::compute_modifier_flags() const {
   // The modifier for an objectArray is the same as its element
   if (element_klass() == NULL) {
     assert(Universe::is_bootstrapping(), "partial objArray only at startup");
     return JVM_ACC_ABSTRACT | JVM_ACC_FINAL | JVM_ACC_PUBLIC;
   }
   // Return the flags of the bottom element type.
-  jint element_flags = bottom_klass()->compute_modifier_flags(CHECK_0);
+  jint element_flags = bottom_klass()->compute_modifier_flags();
 
   return (element_flags & (JVM_ACC_PUBLIC | JVM_ACC_PRIVATE | JVM_ACC_PROTECTED))
                         | (JVM_ACC_ABSTRACT | JVM_ACC_FINAL);

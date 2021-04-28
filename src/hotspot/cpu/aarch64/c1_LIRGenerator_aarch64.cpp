@@ -177,7 +177,7 @@ LIR_Address* LIRGenerator::generate_address(LIR_Opr base, LIR_Opr index,
         __ add(index, LIR_OprFact::intptrConst(large_disp), tmp);
         index = tmp;
       } else {
-        __ move(tmp, LIR_OprFact::intptrConst(large_disp));
+        __ move(LIR_OprFact::intptrConst(large_disp), tmp);
         __ add(tmp, index, tmp);
         index = tmp;
       }
@@ -1411,7 +1411,7 @@ void LIRGenerator::volatile_field_load(LIR_Address* address, LIR_Opr result,
   // membar it's possible for a simple Dekker test to fail if loads
   // use LD;DMB but stores use STLR.  This can happen if C2 compiles
   // the stores in one method and C1 compiles the loads in another.
-  if (!CompilerConfig::is_c1_only_no_aot_or_jvmci()) {
+  if (!CompilerConfig::is_c1_only_no_jvmci()) {
     __ membar();
   }
   __ volatile_load_mem_reg(address, result, info);
