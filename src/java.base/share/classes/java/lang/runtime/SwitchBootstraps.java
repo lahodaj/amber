@@ -56,12 +56,11 @@ public class SwitchBootstraps {
 
     private SwitchBootstraps() {}
 
-    // Shared INIT_HOOK for all switch call sites; looks the target method up in a map
+    private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+
+    //typeSwitch implementation:
     private static final MethodHandle TYPE_INIT_HOOK;
     private static final MethodHandle TYPE_SWITCH_METHOD;
-
-
-    private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
 
     static {
         try {
@@ -83,7 +82,7 @@ public class SwitchBootstraps {
      * Bootstrap method for linking an {@code invokedynamic} call site that
      * implements a {@code switch} on a reference-typed target.  The static
      * arguments are a varargs array of case labels. Constants and {@code Class}
-     * instances are accepted
+     * instances are accepted.
      *
      * @param lookup Represents a lookup context with the accessibility
      *               privileges of the caller.  When used with {@code invokedynamic},

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -44,6 +44,8 @@ public class Switches {
         assertTrue(testNullSwitch(""));
         runArrayTypeTest(this::testArrayTypeStatement);
         runArrayTypeTest(this::testArrayTypeExpression);
+        runEnumTest(this::testEnumExpression1);
+        runEnumTest(this::testEnumExpression2);
     }
 
     void run(Function<Object, Integer> mapper) {
@@ -68,6 +70,13 @@ public class Switches {
         assertEquals("str6", mapper.apply("string"));
         assertEquals("i1", mapper.apply(1));
         assertEquals("", mapper.apply(1.0));
+    }
+
+    void runEnumTest(Function<E, String> mapper) {
+        assertEquals("a", mapper.apply(E.A));
+        assertEquals("b", mapper.apply(E.B));
+        assertEquals("C", mapper.apply(E.C));
+        assertEquals("null", mapper.apply(null));
     }
 
     int typeTestPatternSwitchTest(Object o) {
@@ -143,6 +152,22 @@ public class Switches {
         };
     }
 
+    String testEnumExpression1(E e) {
+        return switch (e) {
+            case A -> "a";
+            case B -> "b";
+            case null, E x -> String.valueOf(x);
+        };
+    }
+
+    String testEnumExpression2(E e) {
+        return switch (e) {
+            case A -> "a";
+            case B -> "b";
+            case E x, null -> String.valueOf(x);
+        };
+    }
+
     void assertEquals(int expected, int actual) {
         if (expected != actual) {
             throw new AssertionError("Expected: " + expected + ", but got: " + actual);
@@ -165,5 +190,9 @@ public class Switches {
         if (actual) {
             throw new AssertionError("Expected: false, but got true");
         }
+    }
+
+    public enum E {
+        A, B, C;
     }
 }

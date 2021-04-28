@@ -3664,12 +3664,16 @@ public class Lower extends TreeTranslator {
 
             Assert.checkNonNull(nullCase);
 
-            int value = constants.isEmpty() ? 0 : constants.iterator().next();
+            int nullValue = constants.isEmpty() ? 0 : constants.iterator().next();
 
-            while (constants.contains(value)) value++;
+            while (constants.contains(nullValue)) nullValue++;
 
-            nullCase.labels.head = makeLit(syms.intType, value);
-            
+            constants.add(nullValue);
+            nullCase.labels.head = makeLit(syms.intType, nullValue);
+
+            int replacementValue = nullValue;
+
+            while (constants.contains(replacementValue)) replacementValue++;
 
             VarSymbol dollar_s = new VarSymbol(FINAL|SYNTHETIC,
                                                names.fromString("s" + tree.pos + this.target.syntheticNameChar()),
@@ -3677,7 +3681,9 @@ public class Lower extends TreeTranslator {
                                                currentMethodSym);
             ListBuffer<JCStatement> stmtList = new ListBuffer<>();
             stmtList.append(make.at(tree.pos()).VarDef(dollar_s, selector).setType(dollar_s.type));
-            selector = make.LetExpr(stmtList.toList(), make.Conditional(makeBinary(NE, make.Ident(dollar_s), makeNull()), make.Ident(dollar_s), makeLit(syms.intType, value)).setType(selector.type)).setType(selector.type);
+            JCExpression nullValueReplacement = make.Conditional(makeBinary(NE, make.Ident(dollar_s), makeLit(syms.intType, nullValue)), make.Ident(dollar_s), makeLit(syms.intType, replacementValue)).setType(syms.intType);
+            JCExpression nullCheck = make.Conditional(makeBinary(NE, make.Ident(dollar_s), makeNull()), nullValueReplacement, makeLit(syms.intType, nullValue)).setType(syms.intType);
+            selector = make.LetExpr(stmtList.toList(), nullCheck).setType(syms.intType);
         }
         selector = translate(selector, target);
         cases = translateCases(cases);

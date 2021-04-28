@@ -2,8 +2,8 @@
  * @test /nodynamiccopyright/
  * @bug 9999999
  * @summary Verify "case null" is not allowed.
- * @compile SwitchNull.java
- * @run main SwitchNull
+ * @compile --enable-preview -source ${jdk.version} SwitchNull.java
+ * @run main/othervm --enable-preview SwitchNull
  */
 
 public class SwitchNull {
@@ -36,6 +36,7 @@ public class SwitchNull {
         assertEquals(1, switchEnumWithDefault(E.B));
         assertEquals(1, switchEnumWithDefault(E.C));
         assertEquals(-1, switchEnumWithDefault(null));
+        testSwitchIntegerBoxExhaustive();
     }
 
     private int switchIntegerBox(Integer i) {
@@ -78,6 +79,27 @@ public class SwitchNull {
             default: return 1;
             case null: return -1;
         }
+    }
+
+    private void testSwitchIntegerBoxExhaustive() {
+        int i = Integer.MIN_VALUE;
+
+        do {
+            int result = switchIntegerBoxExhaustive(i);
+            int expected = i == 0 ? 0 : 1;
+            assertEquals(expected, result);
+        } while (i++ < Integer.MAX_VALUE);
+
+        int result = switchIntegerBoxExhaustive(null);
+        assertEquals(-1, result);
+    }
+
+    private int switchIntegerBoxExhaustive(Integer i) {
+        return switch (i) {
+            case null -> -1;
+            case 0 -> 0;
+            default -> 1;
+        };
     }
 
     enum E {
