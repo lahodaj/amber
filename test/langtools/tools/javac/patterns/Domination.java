@@ -25,6 +25,7 @@
  * @test
  * @bug 9999999
  * @summary XXX
+ * @compile/fail/ref=Domination.out --enable-preview -source ${jdk.version} Domination.java
  * @compile/fail/ref=Domination.out -XDrawDiagnostics --enable-preview -source ${jdk.version} Domination.java
  */
 public class Domination {
@@ -34,7 +35,6 @@ public class Domination {
             case CharSequence cs: return 0;
             case String s: return 1;
             case Object x: return -1;
-            default: return -2; //TODO - needed?
         }
     }
 
@@ -43,7 +43,6 @@ public class Domination {
             case CharSequence cs: return 0;
             case String s && s.isEmpty(): return 1;
             case Object x: return -1;
-            default: return -2; //TODO - needed?
         }
     }
 
@@ -52,7 +51,6 @@ public class Domination {
             case CharSequence cs && true: return 0;
             case String s && s.isEmpty(): return 1;
             case Object x: return -1;
-            default: return -2; //TODO - needed?
         }
     }
 
@@ -61,7 +59,6 @@ public class Domination {
             case CharSequence cs && cs.length() == 0: return 0;
             case String s: return 1;
             case Object x: return -1;
-            default: return -2; //TODO - needed?
         }
     }
 

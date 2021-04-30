@@ -56,7 +56,6 @@ public class Guards {
             case Integer i && i == 1: return "one";
             case Integer i: return "other";
             case Object x: return "any";
-            default: throw new IllegalStateException("TODO - needed?");
         }
     }
 
@@ -66,7 +65,6 @@ public class Guards {
             case Integer i && i == 1 -> { yield "one"; }
             case Integer i -> "other";
             case Object x -> "any";
-            default -> throw new IllegalStateException("TODO - needed?");
         };
     }
 
@@ -77,7 +75,6 @@ public class Guards {
             case Integer i && i == 1 -> { x = "one"; yield true; }
             case Integer i -> { x = "other"; yield true; }
             case Object other -> (x = "any") != null;
-            default -> false;
         }) {
             return x;
         } else {

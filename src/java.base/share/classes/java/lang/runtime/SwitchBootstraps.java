@@ -81,8 +81,8 @@ public class SwitchBootstraps {
     /**
      * Bootstrap method for linking an {@code invokedynamic} call site that
      * implements a {@code switch} on a reference-typed target.  The static
-     * arguments are a varargs array of case labels. Constants and {@code Class}
-     * instances are accepted.
+     * arguments are a varargs array of case labels. Constants of type {@code String} or
+     * {@code Integer} and {@code Class} instances are accepted.
      *
      * @param lookup Represents a lookup context with the accessibility
      *               privileges of the caller.  When used with {@code invokedynamic},
@@ -97,7 +97,8 @@ public class SwitchBootstraps {
      *                       used with {@code invokedynamic}, this is provided by
      *                       the {@code NameAndType} of the {@code InvokeDynamic}
      *                       structure and is stacked automatically by the VM.
-     * @param labels non-null case labels - constants and {@code Class} instances
+     * @param labels non-null case labels - {@code String} and {@code Integer} constants
+     *                        and {@code Class} instances
      * @return the index into {@code labels} of the target value, if the target
      *         is an instance of any of the types, {@literal -1} if the target
      *         value is {@code null}, or {@code types.length} if the target value
@@ -118,13 +119,20 @@ public class SwitchBootstraps {
         requireNonNull(labels);
 
         labels = labels.clone();
-        if (Stream.of(labels).anyMatch(Objects::isNull))
-            throw new IllegalArgumentException("null label found");
-
-        assert Stream.of(labels).distinct().count() == labels.length
-                : "switch labels are not distinct: " + Arrays.toString(labels);
+        Stream.of(labels).forEach(SwitchBootstraps::verifyLabel);
 
         return new TypeSwitchCallSite(invocationType, labels);
+    }
+
+    private static void verifyLabel(Object label) {
+        if (Objects.isNull(label)) {
+            throw new IllegalArgumentException("null label found");
+        }
+        if (label.getClass() != Class.class &&
+            label.getClass() != String.class &&
+            label.getClass() != Integer.class) {
+            throw new IllegalArgumentException("label with illegal type found: " + label.getClass());
+        }
     }
 
     static class TypeSwitchCallSite extends ConstantCallSite {
@@ -148,7 +156,7 @@ public class SwitchBootstraps {
                     if (c.isAssignableFrom(targetClass))
                         return i;
                 } else {
-                    if (Objects.equals(labels[i], target)) {
+                    if (labels[i].equals(target)) {
                         return i;
                     }
                 }

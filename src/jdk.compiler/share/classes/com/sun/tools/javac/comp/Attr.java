@@ -1678,9 +1678,12 @@ public class Attr extends JCTree.Visitor {
             Set<Object> labels = new HashSet<>(); // The set of case labels.
             List<Type> coveredTypes = List.nil();
             boolean hasDefault = false;      // Is there a default label?
+            boolean hasTotalPattern = false;      // Is there a total pattern?
+            boolean hasNullPattern = false;      // Is there a null pattern?
             MatchBindings prevBindings = null;
             CaseTree.CaseKind caseKind = null;
             boolean wasError = false;
+            boolean prevCompletedNormally = false;
             for (List<JCCase> l = cases; l.nonEmpty(); l = l.tail) {
                 JCCase c = l.head;
                 if (caseKind == null) {
@@ -1708,6 +1711,10 @@ public class Attr extends JCTree.Visitor {
                                     preview.warnPreview(expr.pos(), Feature.CASE_NULL);
                                 }
                             }
+                            if (hasNullPattern) {
+                                log.error(c.pos(), Errors.DuplicateCaseLabel);
+                            }
+                            hasNullPattern = true;
                             attribExpr(expr, switchEnv, seltype);
                             matchBindings = new MatchBindings(matchBindings.bindingsWhenTrue, matchBindings.bindingsWhenFalse, true);
                         } else if (enumSwitch) {
@@ -1731,6 +1738,9 @@ public class Attr extends JCTree.Visitor {
                         } else {
                             Type pattype = attribExpr(expr, switchEnv, seltype);
                             if (!pattype.hasTag(ERROR)) {
+                                if (!stringSwitch && !seltype.isPrimitive()) {
+                                    log.error(pat.pos(), Errors.ConstantLabelNotCompatible(pattype, seltype));
+                                }
                                 if (pattype.constValue() == null) {
                                     log.error(expr.pos(),
                                               (stringSwitch ? Errors.StringConstReq : Errors.ConstExprReq));
@@ -1741,19 +1751,34 @@ public class Attr extends JCTree.Visitor {
                         }
                     } else if (pat.hasTag(DEFAULTCASELABEL)) {
                         if (hasDefault) {
-                            log.error(c.pos(), Errors.DuplicateDefaultLabel);
+                            log.error(pat.pos(), Errors.DuplicateDefaultLabel);
+                        } else if (hasTotalPattern) {
+                            log.error(pat.pos(), Errors.TotalPatternAndDefault);
                         } else {
                             hasDefault = true;
                         }
                         matchBindings = MatchBindingsComputer.EMPTY;
                     } else {
+                        if (prevCompletedNormally) {
+                            log.error(pat.pos(), Errors.FlowsThroughToPattern);
+                        }
                         //binding pattern
                         attribExpr(pat, switchEnv, seltype);
                         var primary = primaryType((JCPattern) pat);
                         Type patternType = types.erasure(primary.fst);
+                        boolean isTotal = primary.snd &&
+                                          types.isSubtype(types.erasure(seltype), patternType);
+                        if (isTotal) {
+                            if (hasTotalPattern) {
+                                log.error(pat.pos(), Errors.DuplicateTotalPattern);
+                            } else if (hasDefault) {
+                                log.error(pat.pos(), Errors.TotalPatternAndDefault);
+                            }
+                            hasTotalPattern = true;
+                        }
                         for (Type existing : coveredTypes) {
                             if (types.isSubtype(patternType, existing)) {
-                                log.error(c.pos(), Errors.PatternDominated);
+                                log.error(pat.pos(), Errors.PatternDominated);
                             }
                         }
                         if (primary.snd) {
@@ -1773,6 +1798,10 @@ public class Attr extends JCTree.Visitor {
 
                 boolean completesNormally = c.caseKind == CaseTree.CaseKind.STATEMENT ? flow.aliveAfter(caseEnv, c, make) : false;
                 prevBindings = completesNormally ? currentBindings : null;
+                prevCompletedNormally = completesNormally;
+            }
+            if (switchTree.hasTag(SWITCH)) {
+                ((JCSwitch) switchTree).hasTotalPattern = hasDefault || hasTotalPattern;
             }
         } finally {
             switchEnv.info.scope.leave();

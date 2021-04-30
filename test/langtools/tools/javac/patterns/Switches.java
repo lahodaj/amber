@@ -32,6 +32,7 @@ import java.util.function.Function;
  * @run main/othervm --enable-preview Switches
  */
 public class Switches {
+    //TODO: test NPEs!
     public static void main(String... args) {
         new Switches().run();
     }
@@ -46,13 +47,14 @@ public class Switches {
         runArrayTypeTest(this::testArrayTypeExpression);
         runEnumTest(this::testEnumExpression1);
         runEnumTest(this::testEnumExpression2);
+        runStringWithConstant(this::testStringWithConstant);
+        runStringWithConstant(this::testStringWithConstantExpression);
     }
 
     void run(Function<Object, Integer> mapper) {
         assertEquals(2, mapper.apply("2"));
         assertEquals(3, mapper.apply("3"));
         assertEquals(8, mapper.apply(new StringBuilder("4")));
-        assertEquals(-3, mapper.apply("A"));
         assertEquals(2, mapper.apply(2));
         assertEquals(3, mapper.apply(3));
         assertEquals(-1, mapper.apply(2.0));
@@ -79,32 +81,34 @@ public class Switches {
         assertEquals("null", mapper.apply(null));
     }
 
+    void runStringWithConstant(Function<String, Integer> mapper) {
+        assertEquals(1, mapper.apply("A"));
+        assertEquals(2, mapper.apply("AA"));
+        assertEquals(0, mapper.apply(""));
+        assertEquals(-1, mapper.apply(null));
+    }
+
     int typeTestPatternSwitchTest(Object o) {
         switch (o) {
-            case "A": return -3;
             case String s: return Integer.parseInt(s.toString());
             case CharSequence s: return 2 * Integer.parseInt(s.toString());
             case Integer i: return i;
             case Object x: return -1;
-            default: return -2; //TODO - needed?
         }
     }
 
     int typeTestPatternSwitchExpressionTest(Object o) {
         return switch (o) {
-            case "A" -> -3;
             case String s -> Integer.parseInt(s.toString());
             case CharSequence s -> { yield 2 * Integer.parseInt(s.toString()); }
             case Integer i -> i;
             case Object x -> -1;
-            default -> -2; //TODO - needed?
         };
     }
 
     int testBooleanSwitchExpression(Object o) {
         Object x;
         if (switch (o) {
-            case "A" -> true;
             default -> false;
         }) {
             return -3;
@@ -149,6 +153,22 @@ public class Switches {
             case int[] arr -> "arr" + arr.length;
             case String str -> "str" + str.length();
             default -> "";
+        };
+    }
+
+    int testStringWithConstant(String str) {
+        switch (str) {
+            case "A": return 1;
+            case String s:  return s.length();
+            case null: return -1;
+        }
+    }
+
+    int testStringWithConstantExpression(String str) {
+        return switch (str) {
+            case "A" -> 1;
+            case String s -> s.length();
+            case null -> -1;
         };
     }
 

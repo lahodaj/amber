@@ -1,4 +1,4 @@
-Domination.java:35:13: compiler.err.pattern.dominated
-Domination.java:44:13: compiler.err.pattern.dominated
-Domination.java:53:13: compiler.err.pattern.dominated
+Domination.java:35:25: compiler.err.pattern.dominated
+Domination.java:43:25: compiler.err.pattern.dominated
+Domination.java:51:25: compiler.err.pattern.dominated
 3 errors

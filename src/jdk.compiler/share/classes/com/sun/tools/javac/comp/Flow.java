@@ -662,15 +662,11 @@ public class Flow {
             ListBuffer<PendingExit> prevPendingExits = pendingExits;
             pendingExits = new ListBuffer<>();
             scan(tree.selector);
-            boolean hasDefault = false;
             for (List<JCCase> l = tree.cases; l.nonEmpty(); l = l.tail) {
                 alive = Liveness.ALIVE;
                 JCCase c = l.head;
                 for (JCCaseLabel pat : c.labels) {
                     scan(pat);
-                    if (pat.hasTag(Tag.DEFAULTCASELABEL)) {
-                        hasDefault = true;
-                    }
                 }
                 scanStats(c.stats);
                 c.completesNormally = alive != Liveness.DEAD;
@@ -686,7 +682,7 @@ public class Flow {
                                 l.tail.head.pos(),
                                 Warnings.PossibleFallThroughIntoCase);
             }
-            if (!hasDefault) {
+            if (!tree.hasTotalPattern) {
                 alive = Liveness.ALIVE;
             }
             alive = alive.or(resolveBreaks(tree, prevPendingExits));
@@ -2396,7 +2392,7 @@ public class Flow {
             scanExpr(selector);
             final Bits initsSwitch = new Bits(inits);
             final Bits uninitsSwitch = new Bits(uninits);
-            boolean hasDefault = false;
+            boolean hasDefault = false;//XXX: should use total patterns(?)
             for (List<JCCase> l = cases; l.nonEmpty(); l = l.tail) {
                 inits.assign(initsSwitch);
                 uninits.assign(uninits.andSet(uninitsSwitch));
@@ -2429,7 +2425,7 @@ public class Flow {
                 }
                 // Warn about fall-through if lint switch fallthrough enabled.
             }
-            if (!hasDefault) {
+            if (!hasDefault) {//XXX: coversInput
                 if (tree.hasTag(SWITCH_EXPRESSION)) {
                     markDead();
                 } else {
