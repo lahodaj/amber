@@ -83,6 +83,10 @@ public class SwitchBootstrapsTest {
         testType("a", 0, 1, "", String.class);
         testType(1, 0, 0, 1, Integer.class);
         testType(2, 0, 1, 1, Integer.class);
+        testType(Byte.valueOf((byte) 1), 0, 0, 1, Integer.class);
+        testType(Short.valueOf((short) 1), 0, 0, 1, Integer.class);
+        testType(Character.valueOf((char) 1), 0, 0, 1, Integer.class);
+        testType(Integer.valueOf((int) 1), 0, 0, 1, Integer.class);
         try {
             testType(1, 0, 1, 1.0, Integer.class);
             fail("Didn't get the expected exception.");

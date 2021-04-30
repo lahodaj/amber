@@ -270,7 +270,7 @@ public class TransPatterns extends TreeTranslator {
         //from Attr.handleSwitch:
         boolean enumSwitch = (seltype.tsym.flags() & Flags.ENUM) != 0;
         boolean stringSwitch = types.isSameType(seltype, syms.stringType);
-        boolean enhancedType = !seltype.isPrimitive() && !types.unboxedType(seltype).hasTag(TypeTag.INT) && !enumSwitch && !stringSwitch;
+        boolean enhancedType = !types.unboxedTypeOrType(seltype).isPrimitive() && !enumSwitch && !stringSwitch;
         boolean hasPatternLabels = cases.stream().flatMap(c -> c.labels.stream()).anyMatch(l -> l.isPattern());
         if (hasPatternLabels || enhancedType) {
             ListBuffer<JCCase> newCases = new ListBuffer<>();
