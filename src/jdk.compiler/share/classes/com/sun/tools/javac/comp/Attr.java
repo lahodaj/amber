@@ -175,6 +175,9 @@ public class Attr extends JCTree.Visitor {
         allowCaseNull =
                 Feature.CASE_NULL.allowedInSource(source) &&
                 (!preview.isPreview(Feature.CASE_NULL) || preview.isEnabled());
+        allowPatternSwitch =
+                Feature.PATTERN_SWITCH.allowedInSource(source) &&
+                (!preview.isPreview(Feature.PATTERN_SWITCH) || preview.isEnabled());
         sourceName = source.name;
         useBeforeDeclarationWarning = options.isSet("useBeforeDeclarationWarning");
 
@@ -218,6 +221,10 @@ public class Attr extends JCTree.Visitor {
     /** Switch: case null allowed?
      */
     boolean allowCaseNull;
+
+    /** Switch: pattern switch allowed?
+     */
+    boolean allowPatternSwitch;
 
     /**
      * Switch: warn about use of variable before declaration?
@@ -1667,11 +1674,24 @@ public class Attr extends JCTree.Visitor {
             boolean enumSwitch = (seltype.tsym.flags() & Flags.ENUM) != 0;
             boolean stringSwitch = types.isSameType(seltype, syms.stringType);
             boolean errorEnumSwitch = TreeInfo.isErrorEnumSwitch(selector, cases);
-            //TODO: should check source level here, and reject seltype != int/String/enum iff not the new source level:
-            //this is wrong - pattern matching switches are determined based on the form of the cases, not based on the type of the selector!
-//            boolean typeTestSwitch = cases.stream().flatMap(c -> c.labels.stream()).anyMatch(l -> !l.isExpression() && !l.hasTag(DEFAULTCASELABEL));
-//            if (!enumSwitch && !stringSwitch && !typeTestSwitch)
-//                seltype = chk.checkType(selector.pos(), seltype, syms.intType);
+            boolean hasSelectorTypeError = false;
+            if (!enumSwitch && !stringSwitch && !types.isAssignable(seltype, syms.intType)) {
+                if (preview.isPreview(Feature.PATTERN_SWITCH) && !preview.isEnabled()) {
+                    //preview feature without --preview flag, error
+                    log.error(DiagnosticFlag.SOURCE_LEVEL, selector.pos(), preview.disabledError(Feature.PATTERN_SWITCH));
+                    hasSelectorTypeError = true;
+                } else {
+                    if (!allowPatternSwitch) {
+                        log.error(DiagnosticFlag.SOURCE_LEVEL, selector.pos(),
+                                  Feature.PATTERN_SWITCH.error(this.sourceName));
+                        allowPatternSwitch = true;
+                        hasSelectorTypeError = true;
+                    }
+                    if (preview.isEnabled() && preview.isPreview(Feature.PATTERN_SWITCH)) {
+                        preview.warnPreview(selector.pos(), Feature.PATTERN_SWITCH);
+                    }
+                }
+            }
 
             // Attribute all cases and
             // check that there are no duplicate case labels or default clauses.
@@ -1738,7 +1758,7 @@ public class Attr extends JCTree.Visitor {
                         } else {
                             Type pattype = attribExpr(expr, switchEnv, seltype);
                             if (!pattype.hasTag(ERROR)) {
-                                if (!stringSwitch && !types.unboxedTypeOrType(seltype).isPrimitive()) {
+                                if (!stringSwitch && !types.isAssignable(seltype, syms.intType)) {
                                     log.error(pat.pos(), Errors.ConstantLabelNotCompatible(pattype, seltype));
                                 }
                                 if (pattype.constValue() == null) {
@@ -1798,7 +1818,7 @@ public class Attr extends JCTree.Visitor {
 
                 boolean completesNormally = c.caseKind == CaseTree.CaseKind.STATEMENT ? flow.aliveAfter(caseEnv, c, make) : false;
                 prevBindings = completesNormally ? currentBindings : null;
-                prevCompletedNormally = completesNormally;
+                prevCompletedNormally = completesNormally && !(c.labels.size() == 1 && TreeInfo.isNull(c.labels.head) && c.stats.isEmpty());
             }
             if (switchTree.hasTag(SWITCH)) {
                 ((JCSwitch) switchTree).hasTotalPattern = hasDefault || hasTotalPattern;

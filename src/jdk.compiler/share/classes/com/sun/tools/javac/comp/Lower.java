@@ -1109,6 +1109,9 @@ public class Lower extends TreeTranslator {
      */
     JCExpression access(Symbol sym, JCExpression tree, JCExpression enclOp, boolean refSuper) {
         // Access a free variable via its proxy, or its proxy's proxy
+        if (sym == null || sym.owner == null) {
+            System.err.println("XXXX");
+        }
         while (sym.kind == VAR && sym.owner.kind == MTH &&
             sym.owner.enclClass() != currentClass) {
             // A constant is replaced by its constant value.
@@ -1121,6 +1124,9 @@ public class Lower extends TreeTranslator {
                 return make.at(tree.pos).Ident(lambdaTranslationMap.get(sym));
             } else {
                 // Otherwise replace the variable by its proxy.
+                if (proxies.get(sym) == null || proxies.get(sym).owner == null) {
+                    System.err.println("YYYYYYYYYY");
+                }
                 sym = proxies.get(sym);
                 Assert.check(sym != null && (sym.flags_field & FINAL) != 0);
                 tree = make.at(tree.pos).Ident(sym);

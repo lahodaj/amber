@@ -32,6 +32,7 @@ import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Kinds.Kind;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symbol.BindingSymbol;
+import com.sun.tools.javac.code.Symbol.ClassSymbol;
 import com.sun.tools.javac.code.Symbol.DynamicMethodSymbol;
 import com.sun.tools.javac.code.Symbol.VarSymbol;
 import com.sun.tools.javac.code.Symtab;
@@ -77,6 +78,7 @@ import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCBreak;
 import com.sun.tools.javac.tree.JCTree.JCCase;
 import com.sun.tools.javac.tree.JCTree.JCCaseLabel;
+import com.sun.tools.javac.tree.JCTree.JCClassDecl;
 import com.sun.tools.javac.tree.JCTree.JCContinue;
 import com.sun.tools.javac.tree.JCTree.JCDoWhileLoop;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
@@ -160,6 +162,7 @@ public class TransPatterns extends TreeTranslator {
 
     boolean debugTransPatterns;
 
+    private ClassSymbol currentClass = null;
     private MethodSymbol currentMethodSym = null;
     private VarSymbol currentValue = null;
 
@@ -228,7 +231,7 @@ public class TransPatterns extends TreeTranslator {
 
         VarSymbol bindingVar = bindingContext.bindingDeclared(binding);
         if (bindingVar != null) { //TODO: cannot be null here?
-            JCAssign fakeInit = (JCAssign)make.at(tree.pos).Assign(
+            JCAssign fakeInit = (JCAssign)make.at(TreeInfo.getStartPos(tree)).Assign(
                     make.Ident(bindingVar), convert(make.Ident(currentValue), castTargetType)).setType(bindingVar.erasure(types));
             LetExpr nestedLE = make.LetExpr(List.of(make.Exec(fakeInit)),
                                             make.Literal(true));
@@ -434,7 +437,8 @@ public class TransPatterns extends TreeTranslator {
             Assert.checkNonNull(l.type.constValue());
 
             return switch (l.type.getTag()) {
-                case INT -> LoadableConstant.Int((Integer) l.type.constValue());
+                case BYTE, CHAR,
+                     SHORT, INT -> LoadableConstant.Int((Integer) l.type.constValue());
                 case CLASS -> LoadableConstant.String((String) l.type.constValue());
                 default -> throw new AssertionError();
             };
@@ -557,7 +561,15 @@ public class TransPatterns extends TreeTranslator {
                 return true;
             }
         };
+        MethodSymbol oldMethodSym = currentMethodSym;
         try {
+            if (currentMethodSym == null) {
+                // Block is a static or instance initializer.
+                currentMethodSym =
+                    new MethodSymbol(tree.flags | Flags.BLOCK,
+                                     names.empty, null,
+                                     currentClass);
+            }
             for (List<JCStatement> l = tree.stats; l.nonEmpty(); l = l.tail) {
                 statements.append(translate(l.head));
             }
@@ -565,6 +577,7 @@ public class TransPatterns extends TreeTranslator {
             tree.stats = statements.toList();
             result = tree;
         } finally {
+            currentMethodSym = oldMethodSym;
             bindingContext.pop();
         }
     }
@@ -578,6 +591,33 @@ public class TransPatterns extends TreeTranslator {
         } finally {
             bindingContext = prevContent;
         }
+    }
+
+    @Override
+    public void visitClassDef(JCClassDecl tree) {
+        ClassSymbol prevCurrentClass = currentClass;
+        try {
+            currentClass = tree.sym;
+            super.visitClassDef(tree);
+        } finally {
+            currentClass = prevCurrentClass;
+        }
+    }
+    
+    public void visitVarDef(JCVariableDecl tree) {
+        MethodSymbol oldMethodSym = currentMethodSym;
+        tree.mods = translate(tree.mods);
+        tree.vartype = translate(tree.vartype);
+        if (currentMethodSym == null) {
+            // A class or instance field initializer.
+            currentMethodSym =
+                new MethodSymbol((tree.mods.flags&Flags.STATIC) | Flags.BLOCK,
+                                 names.empty, null,
+                                 currentClass);
+        }
+        if (tree.init != null) tree.init = translate(tree.init);
+        result = tree;
+        currentMethodSym = oldMethodSym;
     }
 
     public JCTree translateTopLevelClass(Env<AttrContext> env, JCTree cdef, TreeMaker make) {

@@ -25,7 +25,6 @@
  * @test
  * @bug 9999999
  * @summary XXX
- * @compile/fail/ref=Domination.out --enable-preview -source ${jdk.version} Domination.java
  * @compile/fail/ref=Domination.out -XDrawDiagnostics --enable-preview -source ${jdk.version} Domination.java
  */
 public class Domination {

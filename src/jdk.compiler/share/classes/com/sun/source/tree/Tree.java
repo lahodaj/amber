@@ -234,7 +234,7 @@ public interface Tree {
          * @since 17
          */
         @PreviewFeature(feature=PreviewFeature.Feature.SWITCH_PATTERN_MATCHING, reflective=true)
-        GUARD_PATTERN(GuardedPatternTree.class),
+        GUARDED_PATTERN(GuardedPatternTree.class),
 
         /**
          * Used for instances of {@link ParenthesizedPatternTree}.

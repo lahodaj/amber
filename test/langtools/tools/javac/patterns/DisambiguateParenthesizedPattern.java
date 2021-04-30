@@ -1,6 +1,7 @@
 /**
  * @test
  * @modules jdk.compiler/com.sun.tools.javac.file
+ *          jdk.compiler/com.sun.tools.javac.main
  *          jdk.compiler/com.sun.tools.javac.parser
  *          jdk.compiler/com.sun.tools.javac.tree
  *          jdk.compiler/com.sun.tools.javac.util
@@ -19,6 +20,8 @@ import com.sun.tools.javac.file.JavacFileManager;
 import com.sun.tools.javac.parser.JavacParser;
 import com.sun.tools.javac.parser.ParserFactory;
 import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.main.Option;
+import com.sun.tools.javac.util.Options;
 import java.nio.charset.Charset;
 
 public class DisambiguateParenthesizedPattern {
@@ -46,6 +49,7 @@ public class DisambiguateParenthesizedPattern {
     public DisambiguateParenthesizedPattern() {
         Context context = new Context();
         JavacFileManager jfm = new JavacFileManager(context, true, Charset.defaultCharset());
+        Options.instance(context).put(Option.PREVIEW, "");
         factory = ParserFactory.instance(context);
     }
 

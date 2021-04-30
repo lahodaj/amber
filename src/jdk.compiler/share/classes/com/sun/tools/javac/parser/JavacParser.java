@@ -764,16 +764,15 @@ public class JavacParser implements Parser {
     /** parses patterns.
      */
 
-    public JCPattern parsePattern(JCModifiers mods, JCExpression parsedType, boolean inInstanceOf) {
+    public JCPattern parsePattern(int pos, JCModifiers mods, JCExpression parsedType, boolean inInstanceOf) {
         if (token.kind == LPAREN && parsedType == null) {
             int startPos = token.pos;
             accept(LPAREN);
-            JCPattern p = parsePattern(null, null, false);
+            JCPattern p = parsePattern(token.pos, null, null, false);
             accept(RPAREN);
             return toP(F.at(startPos).ParenthesizedPattern(p));
         } else {
             JCPattern pattern;
-            int pos = token.pos;
             JCExpression e = parsedType == null ? term(EXPR | TYPE | NOLAMBDA/* | NOINVOCATION*/) : parsedType;
             mods = mods != null ? mods : F.at(token.pos).Modifiers(0);
             JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));
@@ -988,14 +987,15 @@ public class JavacParser implements Parser {
                 JCTree pattern;
                 if (token.kind == LPAREN) {
                     checkSourceLevel(token.pos, Feature.PATTERN_SWITCH);
-                    pattern = parsePattern(null, null, true);
+                    pattern = parsePattern(token.pos, null, null, true);
                 } else {
+                    int patternPos = token.pos;
                     JCModifiers mods = optFinal(0);
                     int typePos = token.pos;
                     JCExpression type = unannotatedType(false);
                     if (token.kind == IDENTIFIER) {
                         checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
-                        pattern = parsePattern(mods, type, true);
+                        pattern = parsePattern(patternPos, mods, type, true);
                     } else {
                         checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
                         if (mods.annotations.nonEmpty()) {
@@ -3100,11 +3100,11 @@ public class JavacParser implements Parser {
             JCExpression e = term(EXPR | TYPE | NOLAMBDA);
             if (token.kind == IDENTIFIER) {
                 checkSourceLevel(token.pos, Feature.PATTERN_SWITCH);
-                label = parsePattern(null, e, false);
-                wrapper = (wrap, wrapPos) -> F.at(wrapPos).ParenthesizedPattern((JCPattern) wrap);
+                label = parsePattern(patternPos, null, e, false);
+                wrapper = (wrap, wrapPos) -> toP(F.at(wrapPos).ParenthesizedPattern((JCPattern) wrap));
             } else {
                 label = e;
-                wrapper = (wrap, wrapPos) -> F.at(wrapPos).Parens((JCExpression) wrap);
+                wrapper = (wrap, wrapPos) -> toP(F.at(wrapPos).Parens((JCExpression) wrap));
             }
             while (parenPositions.nonEmpty()) {
                 accept(RPAREN);

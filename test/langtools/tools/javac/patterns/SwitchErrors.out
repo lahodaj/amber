@@ -7,17 +7,17 @@ SwitchErrors.java:52:18: compiler.err.prob.found.req: (compiler.misc.inconvertib
 SwitchErrors.java:53:18: compiler.err.prob.found.req: (compiler.misc.inconvertible.types: java.lang.CharSequence, int)
 SwitchErrors.java:59:20: compiler.err.total.pattern.and.default
 SwitchErrors.java:65:24: compiler.err.total.pattern.and.default
-SwitchErrors.java:71:25: compiler.err.total.pattern.and.default
-SwitchErrors.java:77:25: compiler.err.duplicate.total.pattern
+SwitchErrors.java:71:18: compiler.err.total.pattern.and.default
+SwitchErrors.java:77:18: compiler.err.duplicate.total.pattern
 SwitchErrors.java:83:20: compiler.err.duplicate.default.label
 SwitchErrors.java:89:20: compiler.err.duplicate.default.label
 SwitchErrors.java:94:27: compiler.err.duplicate.default.label
 SwitchErrors.java:100:13: compiler.err.duplicate.case.label
 SwitchErrors.java:105:13: compiler.err.duplicate.case.label
-SwitchErrors.java:110:36: compiler.err.multiple.patterns
-SwitchErrors.java:116:26: compiler.err.flows.through.to.pattern
-SwitchErrors.java:123:26: compiler.err.flows.through.to.pattern
-SwitchErrors.java:130:26: compiler.err.flows.through.to.pattern
+SwitchErrors.java:110:28: compiler.err.multiple.patterns
+SwitchErrors.java:116:18: compiler.err.flows.through.to.pattern
+SwitchErrors.java:123:18: compiler.err.flows.through.to.pattern
+SwitchErrors.java:130:18: compiler.err.flows.through.to.pattern
 - compiler.note.preview.filename: SwitchErrors.java, DEFAULT
 - compiler.note.preview.recompile
 20 errors

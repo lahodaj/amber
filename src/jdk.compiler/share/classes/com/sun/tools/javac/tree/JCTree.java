@@ -2367,7 +2367,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
 
         @DefinedBy(Api.COMPILER_TREE)
         public Kind getKind() {
-            return Kind.GUARD_PATTERN;
+            return Kind.GUARDED_PATTERN;
         }
 
         @Override
