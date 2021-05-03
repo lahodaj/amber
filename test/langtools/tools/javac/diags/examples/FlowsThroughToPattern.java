@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -21,14 +21,16 @@
  * questions.
  */
 
-// key: compiler.err.switch.null.not.allowed
+// key: compiler.err.flows.through.to.pattern
+// key: compiler.misc.feature.pattern.switch
+// key: compiler.warn.preview.feature.use.plural
+// options: --enable-preview -source ${jdk.version} -Xlint:preview
 
-class SwitchNullNotAllowed {
-
-    void test(Integer i) {
-        switch (i) {
-            case null: break;
-            case 0: break;
+class FlowsThroughToPattern {
+    private void doSwitch(Object o) {
+        switch (o) {
+            case String str:
+            case Object obj: break;
         }
     }
 }
