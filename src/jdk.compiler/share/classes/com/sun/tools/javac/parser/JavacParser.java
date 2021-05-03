@@ -787,25 +787,6 @@ public class JavacParser implements Parser {
         }
     }
 
-//    private AmpResult analyzePatternParens(int offset) {
-//        return switch (S.token(offset).kind) {
-//            case IDENTIFIER ->
-//                switch (S.token(offset + 1).kind) {
-//                    case IDENTIFIER -> AmpResult.PATTERN;
-//                    case LPAREN -> analyzePatternParens(offset + 2);
-//                    case LBRACKET -> S.token(offset + 2).kind == RBRACKET ? AmpResult.PATTERN : AmpResult.EXPRESSION;
-//                    default -> AmpResult.EXPRESSION;
-//                };
-////            case LBRACE -> AmpResult.PATTERN; //error recovery - expect erroneous array pattern
-//            default -> AmpResult.EXPRESSION;
-//        };
-//    }
-//
-//    enum AmpResult {
-//        EXPRESSION,
-//        PATTERN;
-//    }
-
     /**
      * parses (optional) type annotations followed by a type. If the
      * annotations are present before the type and are not consumed during array
@@ -3087,29 +3068,27 @@ public class JavacParser implements Parser {
             nextToken();
             label = toP(F.at(patternPos).DefaultCaseLabel());
         } else {
-            List<Integer> parenPositions = List.nil();
-            while (token.kind == LPAREN) {
-                if (analyzeParens() == ParensResult.CAST) {
-                    break;
+            if (token.kind == LPAREN) {
+                int lookahead = 0;
+                Token ahead;
+                while ((ahead = S.token(lookahead)).kind != EOF && ahead.kind != RPAREN && ahead.kind != AMPAMP) {
+                    lookahead++;
                 }
-                parenPositions = parenPositions.prepend(token.pos);
-                nextToken();
+                Token twoBack;
+                boolean pattern = S.token(lookahead - 1).kind == IDENTIFIER && ((twoBack = S.token(lookahead - 2)).kind == IDENTIFIER || twoBack.kind == GT || twoBack.kind == GTGT || twoBack.kind == GTGTGT);
+                if (pattern) {
+                    return parsePattern(token.pos, null, null, false);
+                } else {
+                    return term(EXPR | TYPE | NOLAMBDA);
+                }
             }
-            BiFunction<JCCaseLabel, Integer, JCCaseLabel> wrapper;
             //XXX: modifiers!
             JCExpression e = term(EXPR | TYPE | NOLAMBDA);
             if (token.kind == IDENTIFIER) {
                 checkSourceLevel(token.pos, Feature.PATTERN_SWITCH);
-                label = parsePattern(patternPos, null, e, false);
-                wrapper = (wrap, wrapPos) -> toP(F.at(wrapPos).ParenthesizedPattern((JCPattern) wrap));
+                return parsePattern(patternPos, null, e, false);
             } else {
-                label = e;
-                wrapper = (wrap, wrapPos) -> toP(F.at(wrapPos).Parens((JCExpression) wrap));
-            }
-            while (parenPositions.nonEmpty()) {
-                accept(RPAREN);
-                label = wrapper.apply(label, parenPositions.head);
-                parenPositions = parenPositions.tail;
+                return e;
             }
         }
 
