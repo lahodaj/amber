@@ -26,14 +26,18 @@
 package com.sun.tools.javac.comp;
 
 import com.sun.source.tree.CaseTree;
-import com.sun.tools.javac.code.BoundKind;
+import com.sun.source.tree.CaseTree.CaseKind;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Kinds.Kind;
+import static com.sun.tools.javac.code.Kinds.Kind.MTH;
+import static com.sun.tools.javac.code.Kinds.Kind.VAR;
 import com.sun.tools.javac.code.Preview;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symbol.BindingSymbol;
 import com.sun.tools.javac.code.Symbol.ClassSymbol;
+import com.sun.tools.javac.code.Symbol.MethodSymbol;
+import com.sun.tools.javac.code.Symbol.MethodHandleSymbol;
 import com.sun.tools.javac.code.Symbol.DynamicMethodSymbol;
 import com.sun.tools.javac.code.Symbol.DynamicVarSymbol;
 import com.sun.tools.javac.code.Symbol.VarSymbol;
@@ -64,16 +68,22 @@ import com.sun.tools.javac.util.Names;
 import com.sun.tools.javac.util.Options;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
-import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import com.sun.tools.javac.code.Type.ClassType;
 import com.sun.tools.javac.code.Type.MethodType;
 import com.sun.tools.javac.code.Type.WildcardType;
 import com.sun.tools.javac.code.TypeTag;
 import static com.sun.tools.javac.code.TypeTag.BOT;
+import static com.sun.tools.javac.code.TypeTag.CHAR;
+import static com.sun.tools.javac.code.TypeTag.INT;
+import static com.sun.tools.javac.code.TypeTag.SHORT;
 import com.sun.tools.javac.jvm.PoolConstant.LoadableConstant;
 import com.sun.tools.javac.jvm.Target;
 import com.sun.tools.javac.tree.JCTree;
@@ -87,13 +97,16 @@ import com.sun.tools.javac.tree.JCTree.JCDoWhileLoop;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCGuardPattern;
 import com.sun.tools.javac.tree.JCTree.JCLambda;
+import com.sun.tools.javac.tree.JCTree.JCNewArray;
 import com.sun.tools.javac.tree.JCTree.JCParenthesizedPattern;
 import com.sun.tools.javac.tree.JCTree.JCPattern;
 import com.sun.tools.javac.tree.JCTree.JCStatement;
 import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
 import com.sun.tools.javac.tree.JCTree.LetExpr;
 import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.tree.TreeScanner;
 import com.sun.tools.javac.util.Assert;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
 import com.sun.tools.javac.util.List;
 import java.util.Iterator;
 
@@ -134,8 +147,8 @@ public class TransPatterns extends TreeTranslator {
         }
 
         @Override
-        List<JCStatement> bindingVars(int diagPos) {
-            return List.nil();
+        Map<BindingSymbol, JCVariableDecl> bindingVars(int diagPos) {
+            return Collections.emptyMap();
         }
 
         @Override
@@ -165,6 +178,7 @@ public class TransPatterns extends TreeTranslator {
     boolean debugTransPatterns;
 
     private ClassSymbol currentClass = null;
+    private List<JCTree> condyableMethods = List.nil();
     private MethodSymbol currentMethodSym = null;
     private VarSymbol currentValue = null;
 
@@ -358,25 +372,83 @@ public class TransPatterns extends TreeTranslator {
             List<Type> staticArgTypes = List.of(syms.methodHandleLookupType,
                                                 syms.stringType,
                                                 syms.methodTypeType,
-                                                types.makeArrayType(new ClassType(syms.classType.getEnclosingType(),
-                                                                    List.of(new WildcardType(syms.objectType, BoundKind.UNBOUND,
-                                                                                             syms.boundClass)),
-                                                                    syms.classType.tsym)));
+                                                types.makeArrayType(syms.patternHandleType));
+            Set<Symbol> capturedVariables = new LinkedHashSet<>();
+                    cases.stream()
+                         .flatMap(c -> c.labels.stream())
+                         .filter(l -> l.isPattern())
+                         .map(l -> (JCPattern) l)
+                        .forEach(p ->
+            new TreeScanner() {
+                private final Set<Symbol> declared = new HashSet<>();
+                @Override
+                public void visitVarDef(JCVariableDecl tree) {
+                    declared.add(tree.sym);
+                    super.visitVarDef(tree);
+                }
+
+                @Override
+                public void visitIdent(JCIdent tree) {
+                    Symbol sym = tree.sym;
+                    if (sym.kind == VAR || sym.kind == MTH) {
+                        if (!declared.contains(sym)) {
+                            VarSymbol v = (VarSymbol)sym;
+                            if (v.getConstValue() == null) {
+                                capturedVariables.add(v);
+                            }
+                        }
+                    }
+                }
+            }.scan(p));
+
+            List<JCCase> prevCaseList = null;
+
+            for (List<JCCase> currentCaseList = cases; currentCaseList.nonEmpty(); currentCaseList = currentCaseList.tail) {
+                JCCase currentCase = currentCaseList.head;
+                boolean nullable = false;
+
+                if (currentCase.labels.size() == 1 && currentCase.labels.head.isNullPattern() && currentCase.stats.isEmpty()) {
+                    if (currentCaseList.tail.nonEmpty() && currentCaseList.tail.head.caseKind == CaseKind.STATEMENT && currentCaseList.tail.head.labels.size() == 1 && currentCaseList.tail.head.labels.head.isPattern()) {
+                        nullable = true;
+                        currentCaseList = currentCaseList.tail;
+                        currentCase = currentCaseList.head;
+                        if (currentCaseList == cases) {
+                            cases = currentCaseList;
+                        } else {
+                            prevCaseList.tail = currentCaseList;
+                        }
+                    }
+                }
+                boolean isPattern = currentCase.labels.stream().anyMatch(l -> l.isPattern());
+                boolean hasJoinedNull =
+                        currentCase.labels.size() > 1 && currentCase.labels.stream().anyMatch(l -> l.isNullPattern());
+                if (hasJoinedNull && isPattern) {
+                    currentCase.labels = currentCase.labels.stream()
+                                              .filter(l -> !l.isNullPattern())
+                                              .collect(List.collector());
+                    nullable = true;
+                }
+                if (nullable && /*XXX: should not otherwise compile - see CaseStructureTest???*/currentCase.labels.head.hasTag(Tag.BINDINGPATTERN)) {
+                    ((JCBindingPattern) currentCase.labels.head).nullable = nullable;
+                }
+                prevCaseList = currentCaseList;
+            }
+
+            Map<JCPattern, List<BindingSymbol>> pattern2Bindings = new LinkedHashMap<>();
             LoadableConstant[] staticArgValues =
                     cases.stream()
                          .flatMap(c -> c.labels.stream())
-                         .map(l -> toLoadableConstant(l, seltype))
+                         .map(l -> toLoadableConstant(l, seltype, capturedVariables, pattern2Bindings))
                          .filter(c -> c != null)
                          .toArray(s -> new LoadableConstant[s]);
 
-            boolean enumSelector = seltype.tsym.isEnum();
-            Name bootstrapName = enumSelector ? names.enumSwitch : names.typeSwitch;
+            Name bootstrapName = names.typeSwitch;
             Symbol bsm = rs.resolveInternalMethod(tree.pos(), env, syms.switchBootstrapsType,
                     bootstrapName, staticArgTypes, List.nil());
 
             MethodType indyType = new MethodType(
-                    List.of(enumSelector ? seltype : syms.objectType, syms.intType),
-                    syms.intType,
+                    List.of(syms.objectType, types.makeArrayType(syms.objectType)),
+                    syms.switchBootstrapsSwitchResultType,
                     List.nil(),
                     syms.methodClass
             );
@@ -386,13 +458,33 @@ public class TransPatterns extends TreeTranslator {
                     indyType,
                     staticArgValues);
 
-            JCFieldAccess qualifier = make.Select(make.QualIdent(bsm.owner), dynSym.name);
-            qualifier.sym = dynSym;
-            qualifier.type = syms.intType;
-            selector = make.Apply(List.nil(),
-                                  qualifier,
-                                  List.of(make.Ident(temp), make.Ident(index)))
-                           .setType(syms.intType);
+            VarSymbol switchResult = new VarSymbol(Flags.SYNTHETIC,
+                    names.fromString("switchResult" + tree.pos + target.syntheticNameChar() + "temp"),
+                    syms.switchBootstrapsSwitchResultType,
+                    currentMethodSym);
+
+            JCFieldAccess switchResultInitSelector = make.Select(make.QualIdent(bsm.owner), dynSym.name);
+            switchResultInitSelector.sym = dynSym;
+            switchResultInitSelector.type = syms.switchBootstrapsSwitchResultType;
+            ListBuffer<JCExpression> dynamicArguments = new ListBuffer<>();
+            dynamicArguments.add(make.Ident(temp));
+            dynamicArguments.add(make.NewArray(make.Type(syms.objectType), List.nil(), capturedVariables.stream().map(v -> make.Ident(v)).collect(List.collector())).setType(types.makeArrayType(syms.objectType)));
+            JCExpression switchResultInit = make.Apply(List.nil(),
+                                  switchResultInitSelector,
+                                  dynamicArguments.toList())
+                           .setType(syms.switchBootstrapsSwitchResultType);
+            statements.add(make.at(tree.pos).VarDef(switchResult, switchResultInit));
+
+            MethodSymbol caseIndex = (MethodSymbol) syms.switchBootstrapsSwitchResultType.tsym.members().findFirst(names.fromString("caseIndex"));
+            JCTree.JCMethodInvocation getCaseIndex = make.App(make.Select(make.Ident(switchResult), caseIndex), List.nil());
+            getCaseIndex.type = syms.intType;
+
+            selector = getCaseIndex;
+
+            MethodSymbol carrier = (MethodSymbol) syms.switchBootstrapsSwitchResultType.tsym.members().findFirst(names.fromString("carrier"));
+            MethodSymbol pattern = (MethodSymbol) syms.switchBootstrapsSwitchResultType.tsym.members().findFirst(names.fromString("handle"));
+            MethodSymbol component = (MethodSymbol) syms.patternHandleType.tsym.members().findFirst(names.fromString("component"));
+            MethodSymbol invoke = (MethodSymbol) syms.methodHandleType.tsym.members().findFirst(names.fromString("invoke"));
 
             int i = 0;
             boolean previousCompletesNormally = false;
@@ -400,33 +492,51 @@ public class TransPatterns extends TreeTranslator {
 
             for (var c : cases) {
                 List<JCCaseLabel> clearedPatterns = c.labels;
-                boolean hasJoinedNull =
-                        c.labels.size() > 1 && c.labels.stream().anyMatch(l -> l.isNullPattern());
-                if (hasJoinedNull) {
-                    clearedPatterns = c.labels.stream()
-                                              .filter(l -> !l.isNullPattern())
-                                              .collect(List.collector());
-                }
                 if (clearedPatterns.size() == 1 && clearedPatterns.head.isPattern() && !previousCompletesNormally) {
                     JCCaseLabel p = clearedPatterns.head;
+                    bindingContext = new BindingDeclarationFenceBindingContext() {
+                        @Override
+                        VarSymbol getBindingFor(BindingSymbol varSymbol) {
+                            return null;//???
+                        }
+                        
+                    };
                     bindingContext = new BasicBindingContext();
                     VarSymbol prevCurrentValue = currentValue;
                     try {
                         currentValue = temp;
-                        JCExpression test = (JCExpression) this.<JCTree>translate(p);
+                        //XXX:
+//                        JCExpression test = (JCExpression) this.<JCTree>translate(p);
+                        List<BindingSymbol> bindings = pattern2Bindings.get(p);
+                        for (BindingSymbol binding : bindings) {
+                            if (bindingContext.getBindingFor(binding) == null) {
+                                bindingContext.bindingDeclared(binding);
+                            }
+                        }
+
                         c.stats = translate(c.stats);
                         JCContinue continueSwitch = make.at(clearedPatterns.head.pos()).Continue(null);
                         continueSwitch.target = tree;
-                        c.stats = c.stats.prepend(make.If(makeUnary(Tag.NOT, test).setType(syms.booleanType),
-                                                           make.Block(0, List.of(make.Exec(make.Assign(make.Ident(index),
-                                                                                                       makeLit(syms.intType, i + 1))
-                                                                                     .setType(syms.intType)),
-                                                                                 continueSwitch)),
-                                                           null));
-                        c.stats = c.stats.prependList(bindingContext.bindingVars(c.pos));
+                        int componentIndex = 0;
+                        for (BindingSymbol binding : bindings) {
+                            JCTree.JCMethodInvocation getCarrier = make.App(make.Select(make.Ident(switchResult), carrier), List.nil()); //TODO: cache to variable?
+                            getCarrier.type = syms.objectType;
+                            JCTree.JCMethodInvocation getPattern = make.App(make.Select(make.Ident(switchResult), pattern), List.nil()); //TODO: cache to variable?
+                            getPattern.type = syms.patternHandleType;
+                            JCTree.JCMethodInvocation getComponent = make.App(make.Select(getPattern, component), List.of(makeLit(syms.intType, componentIndex)));
+                            getComponent.type = syms.methodHandleType;
+                            MethodSymbol tailoredInvoke = invoke.clone(invoke.owner);
+                            tailoredInvoke.type = new MethodType(List.of(syms.objectType), syms.objectType, List.nil(), syms.methodClass);
+                            JCExpression bindingExpr = make.TypeCast(binding.type, make.App(make.Select(getComponent, tailoredInvoke), List.of(getCarrier))).setType(syms.objectType); //TODO: should avoid the cast???
+                            
+                            Map<BindingSymbol, JCVariableDecl> bindingVars = bindingContext.bindingVars(c.pos);
+                            c.stats = c.stats.prepend(make.Assignment(bindingVars.get(binding).sym, bindingExpr));
+                            c.stats = c.stats.prepend(bindingVars.get(binding));
+                            componentIndex++;
+                        }
                     } finally {
                         currentValue = prevCurrentValue;
-                        bindingContext.pop();
+                        bindingContext.pop().pop();
                     }
                 } else {
                     c.stats = translate(c.stats);
@@ -489,30 +599,186 @@ public class TransPatterns extends TreeTranslator {
         return types.boxedTypeOrType(types.erasure(TreeInfo.primaryPatternType(p).type()));
     }
 
-    private LoadableConstant toLoadableConstant(JCCaseLabel l, Type selector) {
+    private LoadableConstant toLoadableConstant(JCCaseLabel l, Type selector, Set<Symbol> capturedVariables, Map<JCPattern, List<BindingSymbol>> pattern2Bindings) {
         if (l.isPattern()) {
-            Type principalType = principalType((JCPattern) l);
-            if (types.isSubtype(selector, principalType)) {
-                return (LoadableConstant) selector;
-            } else {
-                return (LoadableConstant) principalType;
+            class PatternConvertor extends JCTree.Visitor {
+                DynamicVarSymbol description;
+                ListBuffer<BindingSymbol> bindings = new ListBuffer<>();
+                @Override
+                public void visitBindingPattern(JCBindingPattern tree) {
+                    Type patternType = types.boxedTypeOrType(types.erasure(tree.type));
+                    List<Type> bsm_staticArgs = List.of(new ClassType(syms.classType.getEnclosingType(),
+                                                                      List.of(patternType),
+                                                                      syms.classType.tsym));
+                    bsm_staticArgs = bsm_staticArgs.append(new ClassType(syms.classType.getEnclosingType(),
+                                                                         List.of(selector),
+                                                                         syms.classType.tsym));
+                    MethodSymbol ofType = rs.resolveInternalMethod(l.pos(), env, syms.patternHandlesType,
+                            tree.nullable ? names.fromString("ofTypeNullable") : names.fromString("ofType"), bsm_staticArgs, List.nil());
+                    MethodSymbol withCapturedVariables = rs.resolveInternalMethod(l.pos(), env, syms.patternHandlesType,
+                            names.fromString("withCapturedVariables"), List.of(syms.patternHandleType, types.makeArrayType(new ClassType(syms.classType.getEnclosingType(),
+                                                                         List.of(syms.objectType),
+                                                                         syms.classType.tsym))), List.nil());
+                    ListBuffer<LoadableConstant> withCapturedVariablesArgs = new ListBuffer<>();
+                    withCapturedVariablesArgs.add(makeCondyable(l.pos(), ofType, new LoadableConstant[] {(LoadableConstant) patternType, (ClassType) selector}));
+                    capturedVariables.stream().map(s -> s.type).map(t -> /*XXX: should not be necessary!!!*/types.boxedTypeOrType(t)).map(t -> (ClassType) t).forEach(withCapturedVariablesArgs::add);
+                    //TODO: bindings!
+                    description = makeCondyable(l.pos(), withCapturedVariables, withCapturedVariablesArgs.toArray(s -> new LoadableConstant[s]));
+                    bindings.add((BindingSymbol) tree.var.sym);
+                    bindingContext.bindingDeclared((BindingSymbol) tree.var.sym);
+                }
+
+                @Override
+                public void visitParenthesizedPattern(JCParenthesizedPattern tree) {
+                    tree.pattern.accept(this);
+                }
+
+                @Override
+                public void visitGuardPattern(JCGuardPattern tree) {
+                    tree.patt.accept(this);
+
+                    DynamicVarSymbol mainPatternDescription = description;
+
+                    ListBuffer<Symbol> guardMethodParameters = new ListBuffer<>();
+                    capturedVariables.stream().forEach(guardMethodParameters::add);
+                    bindings.stream().forEach(guardMethodParameters::add);
+                    MethodType guardMethodType = new MethodType(guardMethodParameters.stream().map(s -> s.type).collect(List.collector()), types.makeArrayType(syms.objectType), List.nil(), syms.methodClass);
+                    MethodSymbol guardMethod = new MethodSymbol(/*XXX: capture this!*/Flags.STATIC | Flags.SYNTHETIC, names.fromString("$guard$" + tree.expr.getPreferredPosition()), guardMethodType, currentClass);
+
+                    Iterator<Symbol> guardMethodParametersIt = guardMethodParameters.iterator();
+                    Iterator<VarSymbol> parametersIt = guardMethod.params().iterator();
+                    Map<Symbol, Symbol> originalVar2Parameter = new LinkedHashMap<>();
+                    
+                    while (guardMethodParametersIt.hasNext()) {
+                        originalVar2Parameter.put(guardMethodParametersIt.next(), parametersIt.next());
+                    }
+
+                    bindingContext = new BindingDeclarationFenceBindingContext();
+                    bindingContext = new BasicBindingContext();
+                    int mark = bindings.size();
+
+                    currentClass.members().enter(guardMethod);
+
+                    //gather bindings from guards:
+                    new TreeScanner() {
+                        @Override
+                        public void visitBindingPattern(JCBindingPattern tree) {
+                            bindings.add((BindingSymbol) tree.var.sym);
+                            bindingContext.bindingDeclared((BindingSymbol) tree.var.sym);
+                            super.visitBindingPattern(tree);
+                        }
+                    }.scan(tree.expr);
+
+                    JCExpression guardExpression = translate(new TreeTranslator() {
+                        @Override
+                        public void visitIdent(JCIdent tree) {
+                            Symbol newSymbol = originalVar2Parameter.get(tree.sym);
+                            if (newSymbol != null) {
+                                result = make.Ident(newSymbol);
+                            } else {
+                                result = tree;
+                            }
+                        }
+                    }.translate(tree.expr));
+
+                    java.util.List<BindingSymbol> guardOutwardBindings = bindings.toList().subList(mark, bindings.size());
+
+                    JCNewArray resultBindings = make.NewArray(make.Ident(syms.objectType.tsym), List.nil(), guardOutwardBindings.stream().map(var -> {
+                        return bindingContext.getBindingFor(var);
+                            }).map(var -> make.Ident(var)).collect(List.collector()));
+                    resultBindings.type = types.makeArrayType(syms.objectType);
+                    JCIf body = make.If(guardExpression, make.Return(resultBindings), make.Return(makeLit(syms.botType, null)));
+                    ListBuffer<JCStatement> guardMethodBody = new ListBuffer<>();
+                    guardMethodBody.addAll(bindingContext.bindingVars(l.pos).values());
+                    guardMethodBody.add(body);
+                    condyableMethods = condyableMethods.prepend(
+                            make.MethodDef(guardMethod,
+                                           guardMethod.externalType(types),
+                                           make.Block(0, guardMethodBody.toList())));
+
+                    MethodSymbol withGuard = rs.resolveInternalMethod(l.pos(), env, syms.patternHandlesType,
+                            names.fromString("guarded"), List.of(syms.patternHandleType, syms.methodHandleType, types.makeArrayType(new ClassType(syms.classType.getEnclosingType(),
+                                                                         List.of(syms.objectType),
+                                                                         syms.classType.tsym))), List.nil());
+                    ListBuffer<LoadableConstant> withGuardArgs = new ListBuffer<>();
+                    withGuardArgs.add((LoadableConstant) mainPatternDescription);
+                    withGuardArgs.add(guardMethod.asHandle());
+                    //TODO: primitive types, when allowed?
+                    guardOutwardBindings.stream().map(s -> s.type).map(t -> (ClassType) t).forEach(withGuardArgs::add);
+                    description = makeCondyable(l.pos(), withGuard, withGuardArgs.toArray(s -> new LoadableConstant[s]));
+                    bindingContext.pop().pop();
+                }
+
             }
+            PatternConvertor convertor = new PatternConvertor();
+            l.accept(convertor);
+
+            pattern2Bindings.put((JCPattern) l, convertor.bindings.toList());
+            return convertor.description;
         } else if (l.isExpression() && !TreeInfo.isNull((JCExpression) l)) {
             if ((l.type.tsym.flags_field & Flags.ENUM) != 0) {
-                return LoadableConstant.String(((JCIdent) l).name.toString());
-            } else {
-                Assert.checkNonNull(l.type.constValue());
+                List<Type> bsm_staticArgs = List.of(new ClassType(syms.classType.getEnclosingType(),
+                                                              List.of(l.type),
+                                                              syms.classType.tsym), syms.stringType);
+                    bsm_staticArgs = bsm_staticArgs.append(new ClassType(syms.classType.getEnclosingType(),
+                                                                         List.of(selector),
+                                                                         syms.classType.tsym));
 
-                return switch (l.type.getTag()) {
+                MethodSymbol ofEnumConstant = rs.resolveInternalMethod(l.pos(), env, syms.patternHandlesType,
+                        names.fromString("ofEnumConstant"), bsm_staticArgs, List.nil());
+                return makeCondyable(l.pos(), ofEnumConstant, new LoadableConstant[] {(LoadableConstant) l.type, LoadableConstant.String(((JCIdent) l).name.toString()), (ClassType) selector});
+            } else {
+                LoadableConstant constantEntry = switch (l.type.getTag()) {
                     case BYTE, CHAR,
-                         SHORT, INT -> LoadableConstant.Int((Integer) l.type.constValue());
+                        SHORT, INT -> LoadableConstant.Int((Integer) l.type.constValue());
                     case CLASS -> LoadableConstant.String((String) l.type.constValue());
                     default -> throw new AssertionError();
                 };
+                    List<Type> bsm_staticArgs = List.of(syms.objectType);
+                    bsm_staticArgs = bsm_staticArgs.append(new ClassType(syms.classType.getEnclosingType(),
+                                                                         List.of(selector),
+                                                                         syms.classType.tsym));
+
+                MethodSymbol ofConstant = rs.resolveInternalMethod(l.pos(), env, syms.patternHandlesType,
+                        names.fromString("ofConstant"), bsm_staticArgs, List.nil());
+                return makeCondyable(l.pos(), ofConstant, new LoadableConstant[] {constantEntry, (ClassType) selector});
+
             }
         } else {
             return null;
         }
+    }
+
+    private Symbol.DynamicVarSymbol makeCondyable(DiagnosticPosition pos, MethodSymbol targetMethod, LoadableConstant[] parameters) {
+        Assert.checkNonNull(currentClass);
+
+        List<Type> bsm_staticArgs = List.of(syms.methodHandleLookupType,
+                                            syms.stringType,
+                                            new ClassType(syms.classType.getEnclosingType(),
+                                                          List.of(syms.patternHandlesType),
+                                                          syms.classType.tsym));
+        bsm_staticArgs = bsm_staticArgs.appendList(targetMethod.type.getParameterTypes());
+
+        MethodType indyType = new MethodType(bsm_staticArgs, targetMethod.type.getReturnType(), List.nil(), syms.methodClass);
+
+        MethodSymbol condyable = new MethodSymbol(Flags.STATIC | Flags.SYNTHETIC, names.fromString("$condyable$" + pos.getPreferredPosition()), indyType, currentClass);
+
+        if ((targetMethod.flags() & Flags.VARARGS) != 0) {
+            condyable.flags_field |= Flags.VARARGS;
+        }
+
+        currentClass.members().enter(condyable);
+
+        condyableMethods = condyableMethods.prepend(
+                make.MethodDef(condyable,
+                               condyable.externalType(types),
+                               make.Block(0, List.of(make.Return(make.Apply(List.nil(), make.QualIdent(targetMethod), condyable.params().stream().skip(3).map(p -> make.Ident(p)).collect(List.collector())).setType(syms.patternHandleType))))));
+
+        return new Symbol.DynamicVarSymbol(condyable.name,
+                                           syms.noSymbol,
+                                           new MethodHandleSymbol(condyable),
+                                           targetMethod.type.getReturnType(),
+                                           parameters);
     }
 
     @Override
@@ -664,10 +930,15 @@ public class TransPatterns extends TreeTranslator {
     @Override
     public void visitClassDef(JCClassDecl tree) {
         ClassSymbol prevCurrentClass = currentClass;
+        List<JCTree> prevCondyableMethods = condyableMethods;
         try {
             currentClass = tree.sym;
+            condyableMethods = List.nil();
             super.visitClassDef(tree);
         } finally {
+            tree.defs = tree.defs.prependList(condyableMethods);
+            currentClass = prevCurrentClass;
+            condyableMethods = prevCondyableMethods;
             currentClass = prevCurrentClass;
         }
     }
@@ -748,7 +1019,7 @@ public class TransPatterns extends TreeTranslator {
     abstract class BindingContext {
         abstract VarSymbol bindingDeclared(BindingSymbol varSymbol);
         abstract VarSymbol getBindingFor(BindingSymbol varSymbol);
-        abstract List<JCStatement> bindingVars(int diagPos);
+        abstract Map<BindingSymbol, JCVariableDecl> bindingVars(int diagPos);
         abstract JCStatement decorateStatement(JCStatement stat);
         abstract JCExpression decorateExpression(JCExpression expr);
         abstract BindingContext pop();
@@ -788,17 +1059,17 @@ public class TransPatterns extends TreeTranslator {
         }
 
         @Override
-        List<JCStatement> bindingVars(int diagPos) {
-            if (hoistedVarMap.isEmpty()) return List.nil();
-            ListBuffer<JCStatement> stats = new ListBuffer<>();
+        Map<BindingSymbol, JCVariableDecl> bindingVars(int diagPos) {
+            if (hoistedVarMap.isEmpty()) return Collections.emptyMap();
+            Map<BindingSymbol, JCVariableDecl> stats = new LinkedHashMap<>();
             for (Entry<BindingSymbol, VarSymbol> e : hoistedVarMap.entrySet()) {
                 JCVariableDecl decl = makeHoistedVarDecl(diagPos, e.getValue());
                 if (!e.getKey().isPreserved() ||
                     !parent.tryPrepend(e.getKey(), decl)) {
-                    stats.add(decl);
+                    stats.put(e.getKey(), decl);
                 }
             }
-            return stats.toList();
+            return stats;
         }
 
         @Override
@@ -813,9 +1084,9 @@ public class TransPatterns extends TreeTranslator {
             //        //use N
             //    }
             //}
-            List<JCStatement> stats = bindingVars(stat.pos);
-            if (stats.nonEmpty()) {
-                stat = make.at(stat.pos).Block(0, stats.append(stat));
+            Map<BindingSymbol, JCVariableDecl> stats = bindingVars(stat.pos);
+            if (!stats.isEmpty()) {
+                stat = make.at(stat.pos).Block(0, List.<JCStatement>from(stats.values()).append(stat));
             }
             return stat;
         }

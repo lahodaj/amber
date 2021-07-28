@@ -221,8 +221,11 @@ public class Symtab {
     public final Type typeDescriptorType;
     public final Type recordType;
     public final Type switchBootstrapsType;
+    public final Type switchBootstrapsSwitchResultType;
     public final Type valueBasedType;
     public final Type valueBasedInternalType;
+    public final Type patternHandleType;
+    public final Type patternHandlesType;
 
     /** The symbol representing the length field of an array.
      */
@@ -588,8 +591,11 @@ public class Symtab {
         typeDescriptorType = enterClass("java.lang.invoke.TypeDescriptor");
         recordType = enterClass("java.lang.Record");
         switchBootstrapsType = enterClass("java.lang.runtime.SwitchBootstraps");
+        switchBootstrapsSwitchResultType = enterClass("java.lang.runtime.SwitchBootstraps$SwitchResult");
         valueBasedType = enterClass("jdk.internal.ValueBased");
         valueBasedInternalType = enterSyntheticAnnotation("jdk.internal.ValueBased+Annotation");
+        patternHandleType = enterClass("java.lang.runtime.PatternHandle");
+        patternHandlesType = enterClass("java.lang.runtime.PatternHandles");
 
         synthesizeEmptyInterfaceIfMissing(autoCloseableType);
         synthesizeEmptyInterfaceIfMissing(cloneableType);

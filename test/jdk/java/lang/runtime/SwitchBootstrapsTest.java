@@ -28,7 +28,10 @@ import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.runtime.PatternHandle;
+import java.lang.runtime.PatternHandles;
 import java.lang.runtime.SwitchBootstraps;
+import java.lang.runtime.SwitchBootstraps.SwitchResult;
 
 import org.testng.annotations.Test;
 
@@ -43,15 +46,46 @@ import static org.testng.Assert.fail;
 @Test
 public class SwitchBootstrapsTest {
 
+//    public void testTypes() throws Throwable {
+//        MethodHandle indy = SwitchBootstraps.typeSwitch(MethodHandles.lookup(), "", MethodType.methodType(SwitchResult.class, Object.class), PatternHandles.ofType(String.class, Object.class)).dynamicInvoker();
+//        assertEquals(0, ((SwitchResult) indy.invoke("")).caseIndex());
+//        assertEquals(1, ((SwitchResult) indy.invoke(1)).caseIndex());
+//    }
+//
+//    public void testGuards() throws Throwable {
+//        MethodHandle guard = MethodHandles.lookup().findStatic(SwitchBootstrapsTest.class, "trivialTrueGuard", MethodType.methodType(Object[].class, String.class, String.class));
+//        PatternHandle withGuard = PatternHandles.guarded(PatternHandles.withCapturedVariables(PatternHandles.ofType(String.class, Object.class), String.class), guard, String.class);
+//        MethodHandle indy = SwitchBootstraps.typeSwitch(MethodHandles.lookup(), "", MethodType.methodType(SwitchResult.class, Object.class, String.class), withGuard,
+//                PatternHandles.withCapturedVariables(PatternHandles.ofType(String.class, Object.class), String.class)).dynamicInvoker();
+//        assertEquals(0, ((SwitchResult) indy.invoke("b", "a")).caseIndex());
+//        assertEquals(1, ((SwitchResult) indy.invoke("b", "c")).caseIndex());
+//        assertEquals(2, ((SwitchResult) indy.invoke(1, "")).caseIndex());
+//        SwitchResult result = (SwitchResult) indy.invoke("b", "a");
+//        System.err.println(withGuard.descriptor());
+//        System.err.println(withGuard.components());
+//        System.err.println(withGuard.component(0).invoke(result.carrier()));
+//        System.err.println(withGuard.component(1).invoke(result.carrier()));
+////        result.carrier();
+//    }
+//
+//    private static Object[] trivialTrueGuard(String capturedString, String bindingStr) {
+//        if (capturedString.compareTo(bindingStr) < 0) {
+//            return new Object[] {"success"};
+//        } else {
+//            return null;
+//        }
+//    }
+//
+//    private static boolean trivialFalseGuard() {
+//        return true;
+//    }
+
     public static final MethodHandle BSM_TYPE_SWITCH;
-    public static final MethodHandle BSM_ENUM_SWITCH;
 
     static {
         try {
             BSM_TYPE_SWITCH = MethodHandles.lookup().findStatic(SwitchBootstraps.class, "typeSwitch",
-                                                                MethodType.methodType(CallSite.class, MethodHandles.Lookup.class, String.class, MethodType.class, Object[].class));
-            BSM_ENUM_SWITCH = MethodHandles.lookup().findStatic(SwitchBootstraps.class, "enumSwitch",
-                                                                MethodType.methodType(CallSite.class, MethodHandles.Lookup.class, String.class, MethodType.class, Object[].class));
+                                                                MethodType.methodType(CallSite.class, MethodHandles.Lookup.class, String.class, MethodType.class, PatternHandle[].class));
         }
         catch (ReflectiveOperationException e) {
             throw new AssertionError("Should not happen", e);
@@ -65,11 +99,19 @@ public class SwitchBootstrapsTest {
         assertEquals(-1, (int) indy.invoke(null, start));
     }
 
-    private void testEnum(Enum<?> target, int start, int result, Object... labels) throws Throwable {
-        MethodType switchType = MethodType.methodType(int.class, target.getClass(), int.class);
-        MethodHandle indy = ((CallSite) BSM_ENUM_SWITCH.invoke(MethodHandles.lookup(), "", switchType, labels)).dynamicInvoker();
-        assertEquals((int) indy.invoke(target, start), result);
-        assertEquals(-1, (int) indy.invoke(null, start));
+    private void testEnum(Enum<?> target, int result, Object... labels) throws Throwable {
+        MethodType switchType = MethodType.methodType(SwitchResult.class, target.getClass());
+        PatternHandle[] pattern = new PatternHandle[labels.length];
+        for (int idx = 0; idx < labels.length; idx++) {
+            if (labels[idx] instanceof String) {
+                pattern[idx] = PatternHandles.ofEnumConstant(target.getClass(), (String) labels[idx], Object.class);
+            } else {
+                pattern[idx] = PatternHandles.ofType((Class<?>) labels[idx], Object.class);
+            }
+        }
+        MethodHandle indy = ((CallSite) BSM_TYPE_SWITCH.invoke(MethodHandles.lookup(), "", switchType, pattern)).dynamicInvoker();
+        assertEquals(((SwitchResult) indy.invoke(target)).caseIndex(), result);
+        assertEquals(((SwitchResult) indy.invoke(null)).caseIndex(), -1);
     }
 
     public enum E1 {
@@ -110,51 +152,50 @@ public class SwitchBootstrapsTest {
     }
 
     public void testEnums() throws Throwable {
-        testEnum(E1.A, 0, 2, "B", "C", "A", E1.class);
-        testEnum(E1.B, 0, 0, "B", "C", "A", E1.class);
-        testEnum(E1.B, 1, 3, "B", "C", "A", E1.class);
-        try {
-            testEnum(E1.B, 1, 3, "B", "C", "A", E2.class);
-            fail("Didn't get the expected exception.");
-        } catch (IllegalArgumentException ex) {
-            //OK
-        }
-        try {
-            testEnum(E1.B, 1, 3, "B", "C", "A", String.class);
-            fail("Didn't get the expected exception.");
-        } catch (IllegalArgumentException ex) {
-            //OK
-        }
+        testEnum(E1.A, 2, "B", "C", "A", E1.class);
+        testEnum(E1.B, 0, "B", "C", "A", E1.class);
+//        try {
+//            testEnum(E1.B, 3, "B", "C", "A", E2.class);
+//            fail("Didn't get the expected exception.");
+//        } catch (IllegalArgumentException ex) {
+//            //OK
+//        }
+//        try {
+//            testEnum(E1.B, 3, "B", "C", "A", String.class);
+//            fail("Didn't get the expected exception.");
+//        } catch (IllegalArgumentException ex) {
+//            //OK
+//        }
     }
 
     public void testWrongSwitchTypes() throws Throwable {
-        MethodType[] switchTypes = new MethodType[] {
-            MethodType.methodType(int.class, Object.class),
-            MethodType.methodType(int.class, double.class, int.class),
-            MethodType.methodType(int.class, Object.class, Integer.class)
-        };
-        for (MethodType switchType : switchTypes) {
-            try {
-                BSM_TYPE_SWITCH.invoke(MethodHandles.lookup(), "", switchType);
-                fail("Didn't get the expected exception.");
-            } catch (IllegalArgumentException ex) {
-                //OK, expected
-            }
-        }
-        MethodType[] enumSwitchTypes = new MethodType[] {
-            MethodType.methodType(int.class, Enum.class),
-            MethodType.methodType(int.class, Object.class, int.class),
-            MethodType.methodType(int.class, double.class, int.class),
-            MethodType.methodType(int.class, Enum.class, Integer.class)
-        };
-        for (MethodType enumSwitchType : enumSwitchTypes) {
-            try {
-                BSM_ENUM_SWITCH.invoke(MethodHandles.lookup(), "", enumSwitchType);
-                fail("Didn't get the expected exception.");
-            } catch (IllegalArgumentException ex) {
-                //OK, expected
-            }
-        }
+//        MethodType[] switchTypes = new MethodType[] {
+//            MethodType.methodType(int.class, Object.class),
+//            MethodType.methodType(int.class, double.class, int.class),
+//            MethodType.methodType(int.class, Object.class, Integer.class)
+//        };
+//        for (MethodType switchType : switchTypes) {
+//            try {
+//                BSM_TYPE_SWITCH.invoke(MethodHandles.lookup(), "", switchType);
+//                fail("Didn't get the expected exception.");
+//            } catch (IllegalArgumentException ex) {
+//                //OK, expected
+//            }
+//        }
+//        MethodType[] enumSwitchTypes = new MethodType[] {
+//            MethodType.methodType(int.class, Enum.class),
+//            MethodType.methodType(int.class, Object.class, int.class),
+//            MethodType.methodType(int.class, double.class, int.class),
+//            MethodType.methodType(int.class, Enum.class, Integer.class)
+//        };
+//        for (MethodType enumSwitchType : enumSwitchTypes) {
+//            try {
+//                BSM_ENUM_SWITCH.invoke(MethodHandles.lookup(), "", enumSwitchType);
+//                fail("Didn't get the expected exception.");
+//            } catch (IllegalArgumentException ex) {
+//                //OK, expected
+//            }
+//        }
     }
 
     public void testNullLabels() throws Throwable {
