@@ -937,6 +937,30 @@ public class Pretty extends JCTree.Visitor {
         }
     }
 
+    @Override
+    public void visitDeconstructionPattern(JCDeconstructionPattern tree) {
+        try {
+            printExpr(tree.deconstructor);
+            print("(");
+            printExprs(tree.nested);
+            print(")");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
+    public void visitArrayPattern(JCArrayPattern tree) {
+        try {
+            printExpr(tree.patternType);
+            print("{");
+            printExprs(tree.nested);
+            print("}");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     public void visitSynchronized(JCSynchronized tree) {
         try {
             print("synchronized ");

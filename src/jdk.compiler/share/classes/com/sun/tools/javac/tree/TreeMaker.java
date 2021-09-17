@@ -506,6 +506,18 @@ public class TreeMaker implements JCTree.Factory {
         return tree;
     }
 
+    public JCDeconstructionPattern DeconstructionPattern(JCExpression deconstructor, List<JCPattern> nested) {
+        JCDeconstructionPattern tree = new JCDeconstructionPattern(deconstructor, nested);
+        tree.pos = pos;
+        return tree;
+    }
+
+    public JCArrayPattern ArrayPattern(JCExpression type, List<JCPattern> nested, boolean orMore) {
+        JCArrayPattern tree = new JCArrayPattern(type, nested, orMore);
+        tree.pos = pos;
+        return tree;
+    }
+
     public JCArrayAccess Indexed(JCExpression indexed, JCExpression index) {
         JCArrayAccess tree = new JCArrayAccess(indexed, index);
         tree.pos = pos;

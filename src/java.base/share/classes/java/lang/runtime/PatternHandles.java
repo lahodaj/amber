@@ -261,6 +261,109 @@ public final class PatternHandles {
     }
 
     /**
+     * Returns a {@linkplain PatternHandle} for a <em>nested</em> pattern.  A
+     * nested pattern first matches the target to the outer pattern, and if
+     * it matches successfully, then matches the resulting bindings to the inner
+     * patterns.  The resulting pattern matches if the outer pattern matches
+     * the target, and the bindings match the appropriate inner patterns.  The
+     * target type of the nested pattern is the same as the target type of
+     * the outer pattern.  The bindings are the bindings for the outer pattern,
+     * followed by the concatenation of the bindings for the inner patterns.
+     *
+     * @param outer  The outer pattern
+     * @param inners The inner patterns, which can be null if no nested pattern
+     *               for the corresponding binding is desired
+     * @return the nested pattern
+     */
+    public static PatternHandle nested(PatternHandle outer, PatternHandle... inners) {
+        PatternHandle[] patternHandles = inners.clone();
+        int outerCount = outer.descriptor().parameterCount();
+        Class<?> outerCarrierType = outer.tryMatch().type().returnType();
+
+        // Adapt inners to types of outer bindings
+        for (int i = 0; i < patternHandles.length; i++) {
+            PatternHandle patternHandle = patternHandles[i];
+            if (patternHandle.descriptor().returnType() != outer.descriptor().parameterType(i))
+                patternHandles[i] = adaptTarget(patternHandle, outer.descriptor().parameterType(i));
+        }
+
+        int[] innerPositions = IntStream.range(0, patternHandles.length)
+                                        .filter(i -> patternHandles[i] != null)
+                                        .toArray();
+        MethodHandle[] innerComponents = Stream.of(patternHandles)
+                                               .filter(Objects::nonNull)
+                                               .map(PatternHandle::components)
+                                               .flatMap(List::stream)
+                                               .toArray(MethodHandle[]::new);
+        MethodHandle[] innerTryMatches = Stream.of(patternHandles)
+                                               .filter(Objects::nonNull)
+                                               .map(PatternHandle::tryMatch)
+                                               .toArray(MethodHandle[]::new);
+        Class<?>[] innerCarriers = Stream.of(patternHandles)
+                                         .filter(Objects::nonNull)
+                                         .map(e -> e.tryMatch().type().returnType())
+                                         .toArray(Class[]::new);
+        Class<?>[] innerTypes = Stream.of(innerComponents)
+                                      .map(mh -> mh.type().returnType())
+                                      .toArray(Class[]::new);
+
+        MethodType descriptor = outer.descriptor().appendParameterTypes(innerTypes);
+
+        MethodHandle mh = PatternCarriers.carrierFactory(descriptor);
+        mh = MethodHandles.filterArguments(mh, outerCount, innerComponents);
+        int[] spreadInnerCarriers = new int[outerCount + innerComponents.length];
+        for (int i = 0; i < outerCount; i++)
+            spreadInnerCarriers[i] = i;
+        int k = outerCount;
+        int j = 0;
+        for (PatternHandle e : patternHandles) {
+            if (e == null)
+                continue;
+            for (int i = 0; i < e.descriptor().parameterCount(); i++)
+                spreadInnerCarriers[k++] = outerCount + j;
+            j++;
+        }
+        MethodType spreadInnerCarriersMT = outer.descriptor()
+                                                .appendParameterTypes(innerCarriers)
+                                                .changeReturnType(mh.type().returnType());
+        mh = MethodHandles.permuteArguments(mh, spreadInnerCarriersMT, spreadInnerCarriers);
+        for (int position : innerPositions)
+            mh = bailIfNthNull(mh, outerCount + position);
+        mh = MethodHandles.filterArguments(mh, outerCount, innerTryMatches);
+        int[] spreadNestedCarrier = new int[outerCount + innerPositions.length];
+        for (int i = 0; i < outerCount; i++)
+            spreadNestedCarrier[i] = i;
+        for (int i = 0; i < innerPositions.length; i++)
+            spreadNestedCarrier[outerCount + i] = innerPositions[i];
+        mh = MethodHandles.permuteArguments(mh, outer.descriptor().changeReturnType(mh.type().returnType()),
+                                            spreadNestedCarrier);
+        mh = MethodHandles.filterArguments(mh, 0, outer.components().toArray(EMPTY_MH_ARRAY));
+        mh = MethodHandles.permuteArguments(mh, MethodType.methodType(mh.type().returnType(), outerCarrierType),
+                                            new int[outerCount]);
+        mh = bailIfNthNull(mh, 0);
+        mh = MethodHandles.filterArguments(mh, 0, outer.tryMatch());
+
+        MethodHandle tryExtract = mh;
+
+        return new PatternHandleImpl(descriptor, tryExtract, PatternCarriers.carrierComponents(descriptor));
+    }
+
+    /**
+     * Construct a method handle that delegates to target, unless the nth
+     * argument is null, in which case it returns null
+     */
+    private static MethodHandle bailIfNthNull(MethodHandle target, int n) {
+        MethodHandle test = MH_OBJECTS_ISNULL
+                .asType(MH_OBJECTS_ISNULL.type()
+                                         .changeParameterType(0, target.type().parameterType(n)));
+        test = MethodHandles.permuteArguments(test, target.type().changeReturnType(boolean.class), n);
+        MethodHandle nullh = MethodHandles.dropArguments(MethodHandles.constant(target.type().returnType(), null),
+                                                         0, target.type().parameterArray());
+        return MethodHandles.guardWithTest(test, nullh, target);
+    }
+
+
+    /**
      * Augment the given pattern with a guard.
      * The resulting pattern has the same captured variables as the input pattern, and these are
      * also passed to the guard. The guard method must return a {@code Object[]} with the output
@@ -379,6 +482,9 @@ public final class PatternHandles {
     private static final MethodHandle MH_TRY_MATCH_WITH_GUARD
             = lookupStatic(PatternHandles.class, "tryMatchWithGuard",
                            Object[].class, PatternHandle.class, MethodHandle.class, Object.class, Object[].class);
+    private static final MethodHandle MH_OBJECTS_ISNULL
+            = lookupStatic(Objects.class, "isNull",
+                           boolean.class, Object.class);
 
     private static Object ofTypeTryMatch(Class<?> type, Object o) {
         return o != null && type.isAssignableFrom(o.getClass())

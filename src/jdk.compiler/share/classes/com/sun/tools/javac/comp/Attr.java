@@ -27,6 +27,7 @@ package com.sun.tools.javac.comp;
 
 import java.util.*;
 import java.util.function.BiConsumer;
+import java.util.stream.Stream;
 
 import javax.lang.model.element.ElementKind;
 import javax.tools.JavaFileObject;
@@ -4116,23 +4117,104 @@ public class Attr extends JCTree.Visitor {
     }
 
     public void visitBindingPattern(JCBindingPattern tree) {
-        ResultInfo varInfo = new ResultInfo(KindSelector.TYP, resultInfo.pt, resultInfo.checkContext);
-        tree.type = tree.var.type = attribTree(tree.var.vartype, env, varInfo);
-        BindingSymbol v = new BindingSymbol(tree.var.mods.flags, tree.var.name, tree.var.vartype.type, env.info.scope.owner);
+        Type type;
+        if (tree.var.vartype != null) {
+            ResultInfo varInfo = new ResultInfo(KindSelector.TYP, resultInfo.pt, resultInfo.checkContext);
+            type = attribTree(tree.var.vartype, env, varInfo);
+        } else {
+            type = resultInfo.pt;
+        }
+        tree.type = tree.var.type = type;
+        BindingSymbol v = new BindingSymbol(tree.var.mods.flags, tree.var.name, type, env.info.scope.owner);
         v.pos = tree.pos;
         tree.var.sym = v;
         if (chk.checkUnique(tree.var.pos(), v, env.info.scope)) {
             chk.checkTransparentVar(tree.var.pos(), v, env.info.scope);
         }
-        annotate.annotateLater(tree.var.mods.annotations, env, v, tree.pos());
-        annotate.queueScanTreeAndTypeAnnotate(tree.var.vartype, env, v, tree.var.pos());
-        annotate.flush();
+        if (tree.var.vartype != null) {
+            annotate.annotateLater(tree.var.mods.annotations, env, v, tree.pos());
+            annotate.queueScanTreeAndTypeAnnotate(tree.var.vartype, env, v, tree.var.pos());
+            annotate.flush();
+        }
         chk.validate(tree.var.vartype, env, true);
         result = tree.type;
         matchBindings = new MatchBindings(List.of(v), List.nil());
     }
 
     @Override
+    public void visitDeconstructionPattern(JCDeconstructionPattern tree) {
+        tree.type = attribType(tree.deconstructor, env);
+        Type site = types.removeWildcards(tree.type);
+        List<Type> expectedRecordTypes;
+        if (site.tsym.kind == Kind.TYP && ((ClassSymbol) site.tsym).isRecord()) {
+            ClassSymbol record = (ClassSymbol) site.tsym;
+            expectedRecordTypes = record.getRecordComponents().stream().map(rc -> types.memberType(site, rc)).collect(List.collector());
+            tree.record = record;
+        } else {
+            log.error(tree.pos(), Errors.DeconstructionPatternOnlyRecords(site.tsym));
+            expectedRecordTypes = Stream.generate(() -> Type.noType)
+                                .limit(tree.nested.size())
+                                .collect(List.collector());
+        }
+        ListBuffer<BindingSymbol> outBindings = new ListBuffer<>();
+        List<Type> recordTypes = expectedRecordTypes;
+        List<JCPattern> nestedPatterns = tree.nested;
+        while (recordTypes.nonEmpty() && nestedPatterns.nonEmpty()) {
+            boolean nestedIsVarPattern = false;
+            nestedIsVarPattern |= nestedPatterns.head.hasTag(BINDINGPATTERN) &&
+                                  ((JCBindingPattern) nestedPatterns.head).var.vartype == null;
+            nestedIsVarPattern |= nestedPatterns.head.hasTag(ARRAYPATTERN) &&
+                                  ((JCArrayPattern) nestedPatterns.head).patternType == null;
+            attribExpr(nestedPatterns.head, env, nestedIsVarPattern ? recordTypes.head : Type.noType);
+            checkCastablePattern(nestedPatterns.head.pos(), recordTypes.head, nestedPatterns.head.type);
+            outBindings.addAll(matchBindings.bindingsWhenTrue);
+            nestedPatterns = nestedPatterns.tail;
+            recordTypes = recordTypes.tail;
+        }
+        if (recordTypes.nonEmpty() || nestedPatterns.nonEmpty()) {
+            while (nestedPatterns.nonEmpty()) {
+                attribExpr(nestedPatterns.head, env, Type.noType);
+                nestedPatterns = nestedPatterns.tail;
+            }
+            List<Type> nestedTypes =
+                    tree.nested.stream().map(p -> p.type).collect(List.collector());
+            log.error(tree.pos(),
+                      Errors.IncorrectNumberOfNestedPatterns(expectedRecordTypes,
+                                                             nestedTypes));
+        }
+        result = tree.type;
+        matchBindings = new MatchBindings(outBindings.toList(), List.nil());
+    }
+
+    @Override
+    public void visitArrayPattern(JCArrayPattern tree) {
+        //XXX: validate resultInfo.pt reasonable, use error otherwise:
+        tree.type = tree.patternType == null ? resultInfo.pt
+                                              : attribType(tree.patternType, env);
+        Type site = types.removeWildcards(tree.type);//TODO?
+        Type expectedElementType;
+        if (site.tsym.kind == Kind.TYP && tree.type.hasTag(ARRAY)) {
+            expectedElementType = types.elemtype(tree.type);
+        } else {
+            if (!tree.type.hasTag(ERROR)) {
+                log.error(tree.pos(), Errors.ArrayPatternNotArray(site.tsym));
+            }
+            expectedElementType = Type.noType;
+        }
+        ListBuffer<BindingSymbol> outBindings = new ListBuffer<>();
+        List<JCPattern> nestedPatterns = tree.nested;
+        while (nestedPatterns.nonEmpty()) {
+            boolean nestedIsVarPattern = nestedPatterns.head.hasTag(BINDINGPATTERN) &&
+                                         ((JCBindingPattern) nestedPatterns.head).var.vartype == null;
+            attribExpr(nestedPatterns.head, env, nestedIsVarPattern ? expectedElementType : Type.noType);
+            checkCastablePattern(nestedPatterns.head.pos(), expectedElementType, nestedPatterns.head.type);
+            outBindings.addAll(matchBindings.bindingsWhenTrue);
+            nestedPatterns = nestedPatterns.tail;
+        }
+        result = tree.type;
+        matchBindings = new MatchBindings(outBindings.toList(), List.nil());
+    }
+
     public void visitParenthesizedPattern(JCParenthesizedPattern tree) {
         attribExpr(tree.pattern, env);
         result = tree.type = tree.pattern.type;

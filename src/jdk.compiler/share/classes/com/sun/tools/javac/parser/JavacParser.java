@@ -239,6 +239,7 @@ public class JavacParser implements Parser {
      *     mode = NOPARAMS    : no parameters allowed for type
      *     mode = TYPEARG     : type argument
      *     mode |= NOLAMBDA   : lambdas are not allowed
+     *     mode |= NOINVOCATION : method invocations are not allowed
      */
     protected static final int EXPR = 0x1;
     protected static final int TYPE = 0x2;
@@ -246,13 +247,14 @@ public class JavacParser implements Parser {
     protected static final int TYPEARG = 0x8;
     protected static final int DIAMOND = 0x10;
     protected static final int NOLAMBDA = 0x20;
+    protected static final int NOINVOCATION = 0x40;
 
     protected void selectExprMode() {
-        mode = (mode & NOLAMBDA) | EXPR;
+        mode = (mode & (NOLAMBDA | NOINVOCATION)) | EXPR;
     }
 
     protected void selectTypeMode() {
-        mode = (mode & NOLAMBDA) | TYPE;
+        mode = (mode & (NOLAMBDA|NOINVOCATION)) | TYPE;
     }
 
     /** The current mode.
@@ -759,23 +761,48 @@ public class JavacParser implements Parser {
         return term(EXPR);
     }
 
-
     /** parses patterns.
      */
 
     public JCPattern parsePattern(int pos, JCModifiers mods, JCExpression parsedType, boolean inInstanceOf) {
         JCPattern pattern;
         if (token.kind == LPAREN && parsedType == null) {
+            //parenthesized pattern:
             int startPos = token.pos;
             accept(LPAREN);
             JCPattern p = parsePattern(token.pos, null, null, false);
             accept(RPAREN);
             pattern = toP(F.at(startPos).ParenthesizedPattern(p));
+        } else if (token.kind == LBRACE) {
+            pattern = parseArrayPatternRest(pos, null);
         } else {
             mods = mods != null ? mods : optFinal(0);
-            JCExpression e = parsedType == null ? term(TYPE | NOLAMBDA) : parsedType;
-            JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));
-            pattern = toP(F.at(pos).BindingPattern(var));
+            JCExpression e;
+            if (parsedType == null) {
+                if (token.kind == IDENTIFIER && token.name() == names.var) {
+                    nextToken();
+                    e = null;
+                } else {
+                    e = term(TYPE | NOLAMBDA);
+                }
+            } else {
+                e = parsedType;
+            }
+            if (token.kind == LPAREN) {
+                ListBuffer<JCPattern> nested = new ListBuffer<>();
+                do {
+                    nextToken();
+                    JCPattern nestedPattern = parsePattern(token.pos, null, null, false);
+                    nested.append(nestedPattern);
+                } while (token.kind == COMMA);
+                accept(RPAREN);
+                pattern = toP(F.at(pos).DeconstructionPattern(e, nested.toList()));
+            } else if (token.kind == LBRACE) {
+                pattern = parseArrayPatternRest(pos, e);
+            } else {
+                JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));
+                pattern = toP(F.at(pos).BindingPattern(var));
+            }
         }
         if (!inInstanceOf && token.kind == AMPAMP) {
             checkSourceLevel(Feature.PATTERN_SWITCH);
@@ -784,6 +811,30 @@ public class JavacParser implements Parser {
             pattern = F.at(pos).GuardPattern(pattern, guard);
         }
         return pattern;
+    }
+
+
+    private JCPattern parseArrayPatternRest(int pos, JCExpression type) {
+        Assert.check(token.kind == LBRACE);
+        ListBuffer<JCPattern> nested = new ListBuffer<>();
+        boolean orMore = false;
+        do {
+            nextToken();
+            if (token.kind == ELLIPSIS) {
+                orMore = true;
+                nextToken();
+                if (token.kind == COMMA) {
+                    //error recovery
+                    accept(RBRACE);
+                    continue;
+                }
+                break;
+            }
+            JCPattern nestedPattern = parsePattern(token.pos, null, null, false);
+            nested.append(nestedPattern);
+        } while (token.kind == COMMA);
+        accept(RBRACE);
+        return toP(F.at(pos).ArrayPattern(type, nested.toList(), orMore));
     }
 
     /**
@@ -976,6 +1027,19 @@ public class JavacParser implements Parser {
                     if (token.kind == IDENTIFIER) {
                         checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
                         pattern = parsePattern(patternPos, mods, type, true);
+                    } else if (token.kind == LPAREN) {
+                        checkSourceLevel(Feature.DECONSTRUCTION_PATTERNS);
+                        ListBuffer<JCPattern> nested = new ListBuffer<>();
+                        do {
+                            nextToken();
+                            JCPattern nestedPattern = parsePattern(token.pos, null, null, false);
+                            nested.append(nestedPattern);
+                        } while (token.kind == COMMA);
+                        accept(RPAREN);
+                        pattern = toP(F.at(type).DeconstructionPattern(type, nested.toList()));
+                    } else if (token.kind == LBRACE) {
+                        checkSourceLevel(Feature.DECONSTRUCTION_PATTERNS);
+                        pattern = parseArrayPatternRest(pos, type);
                     } else {
                         checkNoMods(typePos, mods.flags & ~Flags.DEPRECATED);
                         if (mods.annotations.nonEmpty()) {
@@ -1322,7 +1386,7 @@ public class JavacParser implements Parser {
                         }
                         break loop;
                     case LPAREN:
-                        if ((mode & EXPR) != 0) {
+                        if ((mode & EXPR) != 0 && (mode & NOINVOCATION) == 0) {
                             selectExprMode();
                             t = arguments(typeArgs, t);
                             if (!annos.isEmpty()) t = illegal(annos.head.pos);
@@ -3095,7 +3159,7 @@ public class JavacParser implements Parser {
                 case BYTE: case SHORT: case INT: case LONG: case FLOAT:
                 case DOUBLE: case BOOLEAN: case CHAR: case VOID:
                 case ASSERT, ENUM, IDENTIFIER, UNDERSCORE:
-                    if (depth == 0 && peekToken(lookahead, LAX_IDENTIFIER)) return PatternResult.PATTERN;
+                    if (depth == 0 && (peekToken(lookahead, LAX_IDENTIFIER) || peekToken(lookahead, LPAREN))) return PatternResult.PATTERN;
                     break;
                 case DOT, QUES, EXTENDS, SUPER, COMMA: break;
                 case LT: depth++; break;

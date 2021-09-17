@@ -253,6 +253,21 @@ public interface Tree {
         DEFAULT_CASE_LABEL(DefaultCaseLabelTree.class),
 
         /**
+         * Used for instances of {@link DeconstructionPatternTree}.
+         *
+         * @since 18
+         */
+        @PreviewFeature(feature=PreviewFeature.Feature.DECONSTRUCTION_PATTERNS, reflective=true)
+        DECONSTRUCTION_PATTERN(DeconstructionPatternTree.class),
+
+        /**
+         * Used for instances of {@link ArrayPatternTree}.
+         *
+         * @since 18
+         */
+        ARRAY_PATTERN(ArrayPatternTree.class),
+
+        /**
          * Used for instances of {@link PrimitiveTypeTree}.
          */
         PRIMITIVE_TYPE(PrimitiveTypeTree.class),

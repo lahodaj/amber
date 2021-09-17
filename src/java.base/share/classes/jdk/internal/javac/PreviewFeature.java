@@ -61,6 +61,7 @@ public @interface PreviewFeature {
 
     public enum Feature {
         SWITCH_PATTERN_MATCHING,
+        DECONSTRUCTION_PATTERNS,
         /**
          * A key for testing.
          */
