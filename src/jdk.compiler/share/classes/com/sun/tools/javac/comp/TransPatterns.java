@@ -26,6 +26,7 @@
 package com.sun.tools.javac.comp;
 
 import com.sun.source.tree.CaseTree;
+import com.sun.source.tree.CaseTree.CaseKind;
 import com.sun.tools.javac.code.BoundKind;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Kinds;
@@ -70,6 +71,7 @@ import java.util.LinkedHashMap;
 
 import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import com.sun.tools.javac.code.Symbol.RecordComponent;
+import com.sun.tools.javac.code.Symbol.TypeSymbol;
 import com.sun.tools.javac.code.Type;
 import static com.sun.tools.javac.code.TypeTag.BOT;
 import com.sun.tools.javac.jvm.PoolConstant.LoadableConstant;
@@ -91,8 +93,12 @@ import com.sun.tools.javac.tree.JCTree.JCStatement;
 import com.sun.tools.javac.tree.JCTree.JCSwitchExpression;
 import com.sun.tools.javac.tree.JCTree.LetExpr;
 import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.tree.TreeScanner;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 
 /**
  * This pass translates pattern-matching constructs, such as instanceof <pattern>.
@@ -326,6 +332,51 @@ public class TransPatterns extends TreeTranslator {
         handleSwitch(tree, tree.selector, tree.cases, tree.hasTotalPattern, tree.patternSwitch);
     }
 
+    private JCExpression unrollDeconstructionPattern(JCDeconstructionPattern tree, VarSymbol currentValue) {
+        List<? extends RecordComponent> components = tree.record.getRecordComponents();
+        List<? extends JCPattern> nestedPatterns = tree.nested;
+        ListBuffer<JCStatement> vars = new ListBuffer<>();
+        JCExpression test = null;
+        while (components.nonEmpty()) {
+            RecordComponent component = components.head;
+//            JCPattern nested = nestedPatterns.head;
+            VarSymbol nestedTemp = new VarSymbol(Flags.SYNTHETIC,
+                names.fromString(target.syntheticNameChar() + "c" + target.syntheticNameChar() + component.name),
+                                 component.erasure(types),
+                                 currentMethodSym);
+            Symbol accessor = tree.record
+                                   .members()
+                                   .findFirst(component.name, s -> s.kind == Kind.MTH &&
+                                                                   ((MethodSymbol) s).params.isEmpty());
+            vars.add(make.VarDef(nestedTemp,
+                                 make.App(make.Select(convert(make.Ident(currentValue), tree.type),
+                                                      accessor))));
+            JCPattern nestedPattern = nestedPatterns.head;
+            JCExpression nestedTest;
+            if (nestedPattern.hasTag(Tag.BINDINGPATTERN)) {
+                nestedTest = make.TypeTest(make.Ident(nestedTemp), nestedPattern);
+            } else {
+                BindingSymbol tempBind = new BindingSymbol(Flags.SYNTHETIC,
+                    names.fromString(target.syntheticNameChar() + "b" + target.syntheticNameChar() + tree.pos), nestedPattern.type, //XXX: erasure
+                                     currentMethodSym);
+                nestedTest = makeBinary(Tag.AND,
+                                        make.TypeTest(make.Ident(nestedTemp), make.BindingPattern(make.VarDef(tempBind, null)).setType(tempBind.type)).setType(syms.booleanType),
+                                        unrollDeconstructionPattern(((JCDeconstructionPattern) nestedPattern), tempBind));
+            }
+            if (test == null) {
+                test = nestedTest;
+            } else {
+                test = makeBinary(Tag.AND, test, nestedTest);
+            }
+            components = components.tail;
+            nestedPatterns = nestedPatterns.tail;
+        }
+        Assert.check(components.isEmpty() == nestedPatterns.isEmpty());
+        LetExpr le = make.LetExpr(vars.toList(), test != null ? test : makeLit(syms.booleanType, 1));
+//        le.needsCond = true;
+        le.setType(syms.booleanType);
+        return le;
+    }
     private void handleSwitch(JCTree tree,
                               JCExpression selector,
                               List<JCCase> cases,
@@ -373,6 +424,15 @@ public class TransPatterns extends TreeTranslator {
             // return -1 when the input is null
             //
             //note the selector is evaluated only once and stored in a temporary variable
+            VarSymbol temp = new VarSymbol(Flags.SYNTHETIC,
+                    names.fromString("selector" + tree.pos + target.syntheticNameChar() + "temp"),
+                    seltype,
+                    currentMethodSym);
+            VarSymbol index = new VarSymbol(Flags.SYNTHETIC,
+                    names.fromString(tree.pos + target.syntheticNameChar() + "index"),
+                    syms.intType,
+                    currentMethodSym);
+            {
             ListBuffer<JCCase> newCases = new ListBuffer<>();
             for (List<JCCase> c = cases; c.nonEmpty(); c = c.tail) {
                 if (c.head.stats.isEmpty() && c.tail.nonEmpty()) {
@@ -382,11 +442,64 @@ public class TransPatterns extends TreeTranslator {
                 }
             }
             cases = newCases.toList();
+            }
+            //TODO: be careful about fallthrough/ensure breaks are present!
+//            {
+//                for (List<JCCase> l = cases; l.nonEmpty(); l = l.tail) {
+//                    JCCase c = l.head;
+//                    if (c.labels.size() == 1 && c.labels.get(0).isPattern()) {
+//                        Type primaryType = TreeInfo.primaryPatternType((JCPattern) c.labels.get(0)).type();
+//                        Type erasedPrimaryType = types.erasure(primaryType);
+//                        BindingSymbol bind = new BindingSymbol(Flags.SYNTHETIC,
+//                            names.fromString(target.syntheticNameChar() + "b" + target.syntheticNameChar() + c.pos), erasedPrimaryType,
+//                                             currentMethodSym);
+//                        currentValue = temp; //try-catch
+//                        JCExpression guard = (JCExpression) translate(c.labels.head);
+//                        c.labels.head = (JCCaseLabel) make.BindingPattern(make.VarDef(bind, null)).setType(erasedPrimaryType);
+//                        if (c.guard != null) {
+//                            c.guard = makeBinary(Tag.AND, c.guard, guard);
+//                        } else {
+//                            c.guard = guard;
+//                        }
+//                    }
+//                }
+//            }
+            {
+                ListBuffer<CaseDescription> caseDescriptions = new ListBuffer<>();
+                for (JCCase c : cases) {
+                    if (c.labels.size() == 1 && (c.labels.get(0).hasTag(Tag.BINDINGPATTERN) || c.labels.get(0).hasTag(Tag.DECONSTRUCTIONPATTERN))) {
+                        TypeSymbol currentType = TreeInfo.primaryPatternType(c.labels.get(0)).type().tsym;
+                        JCExpression guard;
+                        JCBindingPattern pat;
+                        if (c.labels.get(0).hasTag(Tag.DECONSTRUCTIONPATTERN)) {
+                            guard = unrollDeconstructionPattern((JCDeconstructionPattern) c.labels.get(0), temp);
+                            BindingSymbol tempBind = new BindingSymbol(Flags.SYNTHETIC,
+                                names.fromString(target.syntheticNameChar() + "b" + target.syntheticNameChar() + tree.pos), currentType.type, //XXX: erasure
+                                                 currentMethodSym);
+                            pat = (JCBindingPattern) make.BindingPattern(make.VarDef(tempBind, null)).setType(tempBind.type);
+                        } else {
+                            guard = makeLit(syms.intType, 1);
+                            pat = (JCBindingPattern) c.labels.get(0);
+                        }
+
+                        if (c.guard != null) {
+                            guard = makeBinary(Tag.AND, guard, c.guard);
+                        }
+                        if (!caseDescriptions.isEmpty() && currentType != null && currentType == caseDescriptions.last().type) {
+                            caseDescriptions.last().variants.add(new VariantDescription((BindingSymbol) pat.var.sym, guard, c.stats));
+                        } else {
+                            caseDescriptions.add(new CaseDescription(c.caseKind, currentType, List.of(pat), ListBuffer.of(new VariantDescription((BindingSymbol) pat.var.sym, guard, c.stats))));
+                        }
+                    } else {
+                        caseDescriptions.add(new CaseDescription(c.caseKind, null, c.labels, ListBuffer.of(new VariantDescription(null, c.guard, c.stats))));
+                    }
+                }
+                cases = processCases(tree, index, caseDescriptions.toList());
+                System.err.println("caseDescriptions: " + caseDescriptions);
+                System.err.println("caseDescriptions: " + cases);
+//                cases = newCases.toList();
+            }
             ListBuffer<JCStatement> statements = new ListBuffer<>();
-            VarSymbol temp = new VarSymbol(Flags.SYNTHETIC,
-                    names.fromString("selector" + tree.pos + target.syntheticNameChar() + "temp"),
-                    seltype,
-                    currentMethodSym);
             boolean hasNullCase = cases.stream()
                                        .flatMap(c -> c.labels.stream())
                                        .anyMatch(p -> p.isExpression() &&
@@ -404,10 +517,6 @@ public class TransPatterns extends TreeTranslator {
             boolean needsNullCheck = !hasNullCase && !seltype.isPrimitive();
             statements.append(make.at(tree.pos).VarDef(temp, needsNullCheck ? attr.makeNullCheck(selector)
                                                                             : selector));
-            VarSymbol index = new VarSymbol(Flags.SYNTHETIC,
-                    names.fromString(tree.pos + target.syntheticNameChar() + "index"),
-                    syms.intType,
-                    currentMethodSym);
             statements.append(make.at(tree.pos).VarDef(index, makeLit(syms.intType, 0)));
 
             List<Type> staticArgTypes = List.of(syms.methodHandleLookupType,
@@ -471,6 +580,7 @@ public class TransPatterns extends TreeTranslator {
                         JCExpression test = (JCExpression) this.<JCTree>translate(p);
                         if (c.guard != null) {
                             test = makeBinary(Tag.AND, test, translate(c.guard));
+                            c.guard = null;
                         }
                         c.stats = translate(c.stats);
                         JCContinue continueSwitch = make.at(clearedPatterns.head.pos()).Continue(null);
@@ -541,6 +651,180 @@ public class TransPatterns extends TreeTranslator {
         } else {
             super.visitSwitchExpression((JCSwitchExpression) tree);
         }
+    }
+
+    record VariantDescription(VarSymbol binding, JCExpression guard, List<JCStatement> statements) {}
+    record CaseDescription(CaseKind kind, TypeSymbol type, List<JCCaseLabel> labels, ListBuffer<VariantDescription> variants) {}
+
+    List<JCCase> processCases(JCTree switchTree, VarSymbol index, List<CaseDescription> caseDescriptions) {
+        ListBuffer<JCCase> result = new ListBuffer<>();
+
+        for (CaseDescription desc : caseDescriptions) {
+            if (desc.variants.size() == 1) {
+                Assert.checkNonNull(desc.labels());
+                result.add(make.Case(desc.kind(), desc.labels(), desc.variants.first().guard(), desc.variants.first().statements(), null));
+            } else {
+                VariantDescription primaryVariant = desc.variants.first();
+                VarSymbol primaryBinding = primaryVariant.binding;
+                ListBuffer<JCStatement> newBody = new ListBuffer<>();
+                List<JCVariableDecl> commonVars = null;
+                ListBuffer<CaseDescription> nestedCases = new ListBuffer<>();
+                VarSymbol primaryVariable = null;
+
+                for (VariantDescription var : desc.variants) {
+                    TreeScanner replaceBinding = new ReplaceVar(Collections.singletonMap(var.binding(), primaryBinding));
+
+                    replaceBinding.scan(var.guard());
+                    replaceBinding.scan(var.statements()); //needed?
+
+                    if (var.guard() != null && var.guard().hasTag(Tag.LETEXPR)) {
+                        LetExpr le = (LetExpr) var.guard();
+                        if (le.defs.stream().allMatch(s -> s.hasTag(Tag.VARDEF))) {
+                            List<JCVariableDecl> currentVars = le.defs.map(s -> (JCVariableDecl) s);
+
+                            if (commonVars != null) {
+                                if (new TreeDiffer(commonVars.map(v -> v.sym), currentVars.map(v -> v.sym)).scan(commonVars, currentVars)) {
+                                    //remap variables:
+                                    Map<Symbol, Symbol> variableRemap = new HashMap<>();
+                                    Iterator<JCVariableDecl> commonVarsIt = commonVars.iterator();
+                                    Iterator<JCVariableDecl> currentVarsIt = currentVars.iterator();
+                                    while (commonVarsIt.hasNext() && currentVarsIt.hasNext()) {
+                                        variableRemap.put(currentVarsIt.next().sym, commonVarsIt.next().sym);
+                                    }
+                                    TreeScanner replaceNested = new ReplaceVar(variableRemap);
+
+                                    var = new VariantDescription(var.binding(), le.expr, var.statements());
+                                    replaceNested.scan(var.guard());
+                                    replaceNested.scan(var.statements()); //needed?
+                                }
+                            } else {
+                                commonVars = currentVars;
+                                var = new VariantDescription(var.binding(), le.expr, var.statements());
+                                newBody.addAll(commonVars);
+                            }
+                        }
+                    }
+                    boolean categorized = false;
+                    if (commonVars != null) {
+                        if (var.guard() != null) {
+                            JCInstanceOf test = null;
+                            JCExpression remainder = null;
+                            if (var.guard() instanceof JCBinary b && b.lhs instanceof JCInstanceOf t) {
+                                test = t;
+                                remainder = b.rhs;
+                            } else if (var.guard() instanceof JCInstanceOf t) {
+                                test = t;
+                                remainder = null;
+                            }
+                            if (test != null && test.expr.hasTag(Tag.IDENT)) {
+                                JCIdent on = (JCIdent) test.expr;
+                                if (primaryVariable == null) {
+                                    primaryVariable = (VarSymbol) on.sym;//TODO: unchecked cast!
+                                }
+                                if (on.sym == primaryVariable && test.pattern.hasTag(Tag.BINDINGPATTERN)) {
+                                    JCBindingPattern pat = (JCBindingPattern) test.pattern;;
+                                    TypeSymbol clazz = pat.type.tsym;
+                                    if (!nestedCases.isEmpty() && nestedCases.last().type == clazz) {
+                                        VariantDescription newVar = new VariantDescription(pat.var.sym, remainder, var.statements());
+                                        nestedCases.last().variants.add(newVar);
+                                    } else {
+                                        VariantDescription newVar = new VariantDescription(pat.var.sym, remainder, var.statements());
+                                        nestedCases.add(new CaseDescription(desc.kind(), clazz, List.of(pat), ListBuffer.of(newVar)));
+                                    }
+                                    categorized = true;
+                                }
+                            }
+                        }
+                        if (!categorized) {
+                            BindingSymbol bind = new BindingSymbol(Flags.SYNTHETIC,
+                                names.fromString(target.syntheticNameChar() + "b" + target.syntheticNameChar() + /*XXX:*/switchTree.pos), syms.objectType,
+                                                 currentMethodSym);
+                            nestedCases.add(new CaseDescription(desc.kind(), /*is j.l.Object safe here?*/syms.objectType.tsym, List.of(make.BindingPattern(make.VarDef(bind, null))), desc.variants()));
+                        }
+                    } else {
+                        newBody.add(make.If(var.guard(), make.Block(0, var.statements()), null));
+                    }
+                }
+
+                VarSymbol newIndex = new VarSymbol(Flags.SYNTHETIC,
+                        names.fromString(switchTree.pos + target.syntheticNameChar() + "index"),
+                        syms.intType,
+                        currentMethodSym);
+                newBody.append(make.at(switchTree.pos).VarDef(newIndex, makeLit(syms.intType, 0)));
+
+                List<Type> staticArgTypes = List.of(syms.methodHandleLookupType,
+                                                    syms.stringType,
+                                                    syms.methodTypeType,
+                                                    types.makeArrayType(new ClassType(syms.classType.getEnclosingType(),
+                                                                        List.of(new WildcardType(syms.objectType, BoundKind.UNBOUND,
+                                                                                                 syms.boundClass)),
+                                                                        syms.classType.tsym)));
+                LoadableConstant[] staticArgValues =
+                        nestedCases.stream()
+                             .map(d -> d.type.type) //TODO: erasure???
+                             .toArray(s -> new LoadableConstant[s]);
+
+                Name bootstrapName = names.typeSwitch;
+                MethodSymbol bsm = rs.resolveInternalMethod(switchTree.pos(), env, syms.switchBootstrapsType,
+                        bootstrapName, staticArgTypes, List.nil());
+
+                MethodType indyType = new MethodType(
+                        List.of(syms.objectType, syms.intType),
+                        syms.intType,
+                        List.nil(),
+                        syms.methodClass
+                );
+                DynamicMethodSymbol dynSym = new DynamicMethodSymbol(bootstrapName,
+                        syms.noSymbol,
+                        bsm.asHandle(),
+                        indyType,
+                        staticArgValues);
+
+                JCFieldAccess qualifier = make.Select(make.QualIdent(bsm.owner), dynSym.name);
+                qualifier.sym = dynSym;
+                qualifier.type = syms.intType;
+                JCExpression newSelector = make.Apply(List.nil(),
+                                      qualifier,
+                                      List.of(make.Ident(primaryVariable), make.Ident(index)))
+                               .setType(syms.intType);
+
+                JCSwitch newSwitch = make.Switch(newSelector, List.nil());
+                ListBuffer<JCCase> newCases = new ListBuffer<>();
+                int[] idx = new int[1];
+                VarSymbol primaryVariableFin = primaryVariable;
+                processCases(newSwitch, newIndex, nestedCases.toList()).forEach(c -> {
+                    bindingContext = new BasicBindingContext();
+                    VarSymbol oldCurrentValue = currentValue;
+                    try {
+                        currentValue = primaryVariableFin;
+                        JCExpression assign = (JCExpression) translate(c.labels.head);
+                        c.labels = List.of(makeLit(syms.intType, idx[0]++));
+                        c.stats = translate(c.stats);
+                        c.stats = c.stats.prepend(make.Exec(assign));
+                        c.stats = c.stats.prependList(bindingContext.bindingVars(c.pos));
+                    } finally {
+                        bindingContext.pop();
+                        currentValue = oldCurrentValue;
+                    }
+
+                    newCases.add(c);
+                });
+                JCContinue continueOuterSwitch = make.Continue(null);
+                continueOuterSwitch.target = switchTree;
+                newCases.add(make.Case(CaseKind.STATEMENT, List.of(make.DefaultCaseLabel()), null, List.of(
+                    make.Exec(make.Assign(make.Ident(index),
+                                                  makeLit(syms.intType, result.size() + 1))
+                                          .setType(syms.intType)),
+                    continueOuterSwitch), null));
+
+                newSwitch.cases = newCases.toList();
+                newSwitch.patternSwitch = true;
+                newBody.add(newSwitch);
+                result.add(make.Case(desc.kind(), List.of((JCCaseLabel) make.BindingPattern(make.VarDef(primaryBinding, null)).setType(primaryBinding.type)), null, newBody.toList(), null));
+            }
+        }
+
+        return result.toList();
     }
 
     private Type principalType(JCTree p) {
@@ -757,6 +1041,8 @@ public class TransPatterns extends TreeTranslator {
             this.make = make;
             this.env = env;
             translate(cdef);
+            System.err.println("cdef:");
+            System.err.println(cdef);
         } finally {
             // note that recursive invocations of this method fail hard
             this.make = null;
@@ -829,7 +1115,7 @@ public class TransPatterns extends TreeTranslator {
         VarSymbol bindingDeclared(BindingSymbol varSymbol) {
             VarSymbol res = parent.bindingDeclared(varSymbol);
             if (res == null) {
-                res = new VarSymbol(varSymbol.flags(), varSymbol.name, varSymbol.type, currentMethodSym);
+                res = new VarSymbol(varSymbol.flags() & ~Flags.MATCH_BINDING, varSymbol.name, varSymbol.type, currentMethodSym);
                 res.setTypeAttributes(varSymbol.getRawTypeAttributes());
                 hoistedVarMap.put(varSymbol, res);
             }
@@ -930,5 +1216,20 @@ public class TransPatterns extends TreeTranslator {
      */
     JCExpression makeNull() {
         return makeLit(syms.botType, null);
+    }
+
+    private class ReplaceVar extends TreeScanner {
+
+        private final Map<Symbol, Symbol> fromTo;
+
+        public ReplaceVar(Map<Symbol, Symbol> fromTo) {
+            this.fromTo = fromTo;
+        }
+
+        @Override
+        public void visitIdent(JCIdent tree) {
+            tree.sym = fromTo.getOrDefault(tree.sym, tree.sym);
+            super.visitIdent(tree);
+        }
     }
 }

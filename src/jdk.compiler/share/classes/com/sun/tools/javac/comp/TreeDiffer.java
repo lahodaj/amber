@@ -151,7 +151,7 @@ public class TreeDiffer extends TreeScanner {
         }
     }
 
-    private boolean scan(Iterable<? extends JCTree> xs, Iterable<? extends JCTree> ys) {
+    public boolean scan(Iterable<? extends JCTree> xs, Iterable<? extends JCTree> ys) {
         if (xs == null || ys == null) {
             return xs == null && ys == null;
         }

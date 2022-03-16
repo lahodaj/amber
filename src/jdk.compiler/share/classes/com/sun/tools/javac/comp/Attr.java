@@ -1778,7 +1778,9 @@ public class Attr extends JCTree.Visitor {
                         }
                         checkCastablePattern(pat.pos(), seltype, primaryType);
                         Type patternType = types.erasure(primaryType);
-                        checkCaseLabelDominated(pat.pos(), coveredTypesForPatterns, patternType);
+                        if (pat.hasTag(BINDINGPATTERN)) {
+                            checkCaseLabelDominated(pat.pos(), coveredTypesForPatterns, patternType);
+                        }
                     }
                     currentBindings = matchBindingsComputer.switchCase(pat, currentBindings, matchBindings);
                 }
