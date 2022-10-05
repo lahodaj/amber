@@ -1665,7 +1665,7 @@ public class Attr extends JCTree.Visitor {
             } else {
                 patternSwitch = cases.stream()
                                      .flatMap(c -> c.labels.stream())
-                                     .anyMatch(l -> l.hasTag(PATTERNCASELABEL));
+                                     .anyMatch(l -> l.hasTag(PATTERNCASELABEL) || TreeInfo.isNullCaseLabel(l));
             }
 
             // Attribute all cases and
@@ -1677,7 +1677,6 @@ public class Attr extends JCTree.Visitor {
             boolean hasNullPattern = false;       // Is there a null pattern?
             CaseTree.CaseKind caseKind = null;
             boolean wasError = false;
-            MatchBindings prevBindings = null;
             for (List<JCCase> l = cases; l.nonEmpty(); l = l.tail) {
                 JCCase c = l.head;
                 if (caseKind == null) {
@@ -1687,7 +1686,7 @@ public class Attr extends JCTree.Visitor {
                               Errors.SwitchMixingCaseTypes);
                     wasError = true;
                 }
-                MatchBindings currentBindings = prevBindings;
+                MatchBindings currentBindings = null;
                 boolean wasUnconditionalPattern = hasUnconditionalPattern;
                 for (JCCaseLabel label : c.labels) {
                     if (label instanceof JCConstantCaseLabel constLabel) {
@@ -1805,9 +1804,6 @@ public class Attr extends JCTree.Visitor {
 
                 preFlow(c);
                 c.completesNormally = flow.aliveAfter(caseEnv, c, make);
-
-                prevBindings = c.caseKind == CaseTree.CaseKind.STATEMENT && c.completesNormally ? currentBindings
-                                                                                                : null;
             }
             if (patternSwitch) {
                 chk.checkSwitchCaseStructure(cases);

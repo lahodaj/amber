@@ -441,15 +441,6 @@ public class TransPatterns extends TreeTranslator {
             // return -1 when the input is null
             //
             //note the selector is evaluated only once and stored in a temporary variable
-            ListBuffer<JCCase> newCases = new ListBuffer<>();
-            for (List<JCCase> c = cases; c.nonEmpty(); c = c.tail) {
-                if (c.head.stats.isEmpty() && c.tail.nonEmpty()) {
-                    c.tail.head.labels = c.tail.head.labels.prependList(c.head.labels);
-                } else {
-                    newCases.add(c.head);
-                }
-            }
-            cases = newCases.toList();
             ListBuffer<JCStatement> statements = new ListBuffer<>();
             VarSymbol temp = new VarSymbol(Flags.SYNTHETIC,
                     names.fromString("selector" + tree.pos + target.syntheticNameChar() + "temp"),
