@@ -797,18 +797,7 @@ public class JavacParser implements Parser {
                     nextToken();
                 }
                 accept(RPAREN);
-                JCVariableDecl var;
-                if (token.kind == IDENTIFIER) {
-                    if (!checkGuard || token.name() != names.when) {
-                        var = to(F.at(token.pos).VarDef(F.Modifiers(0), token.name(), e, null));
-                        nextToken();
-                    } else {
-                        var = null;
-                    }
-                } else {
-                    var = null;
-                }
-                pattern = toP(F.at(pos).RecordPattern(e, nested.toList(), var));
+                pattern = toP(F.at(pos).RecordPattern(e, nested.toList()));
             } else {
                 //type test pattern:
                 JCVariableDecl var = toP(F.at(token.pos).VarDef(mods, ident(), e, null));

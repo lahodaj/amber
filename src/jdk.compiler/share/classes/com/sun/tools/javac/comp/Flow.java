@@ -2980,14 +2980,6 @@ public class Flow {
             scan(tree.guard);
         }
 
-        @Override
-        public void visitRecordPattern(JCRecordPattern tree) {
-            super.visitRecordPattern(tree);
-            if (tree.var != null) {
-                initParam(tree.var);
-            }
-        }
-
         void referenced(Symbol sym) {
             unrefdResources.remove(sym);
         }
@@ -3162,7 +3154,6 @@ public class Flow {
         public void visitRecordPattern(JCRecordPattern tree) {
             scan(tree.deconstructor);
             scan(tree.nested);
-            scan(tree.var);
         }
 
         @Override

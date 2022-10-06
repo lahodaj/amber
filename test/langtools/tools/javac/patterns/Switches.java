@@ -624,7 +624,7 @@ public class Switches {
     String deconstructStatement(Object o) {
         switch (o) {
             case R(String s) -> {return s;}
-            case R(Integer i) r -> {return r.o().toString();}
+            case R(Integer i) -> {return i.toString();}
             case Object x -> {return "other";}
         }
     }
@@ -632,7 +632,7 @@ public class Switches {
     String deconstructExpression(Object o) {
         return switch (o) {
             case R(String s) -> s;
-            case R(Integer i) r -> r.o().toString();
+            case R(Integer i) -> i.toString();
             case Object x -> "other";
         };
     }
