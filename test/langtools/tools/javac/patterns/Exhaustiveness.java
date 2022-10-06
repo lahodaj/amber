@@ -1010,6 +1010,7 @@ public class Exhaustiveness extends TestRunner {
                """);
     }
 
+    @Test
     public void testNonPrimitiveBooleanGuard(Path base) throws Exception {
         doTest(base,
                new String[0],
@@ -1054,6 +1055,29 @@ public class Exhaustiveness extends TestRunner {
                "- compiler.note.preview.filename: Test.java, DEFAULT",
                "- compiler.note.preview.recompile",
                "2 errors");
+    }
+
+    @Test
+    public void testInferenceExhaustive(Path base) throws Exception {
+        doTest(base,
+               new String[0],
+               """
+               package test;
+               public class Test {
+                   sealed interface Opt<T> {}
+                   record Some<T>(T t) implements Opt<T> {}
+                   final class None<T> implements Opt<T> {}
+
+                   void test(Opt<String> optValue) {
+                       switch (optValue) {
+                           case Some<String>(String s) ->
+                               System.out.printf("got string: %s%n", s);
+                           case None<String> none ->
+                               System.out.println("got none");
+                       }
+                   }
+               }
+               """);
     }
 
     private void doTest(Path base, String[] libraryCode, String testCode, String... expectedErrors) throws IOException {

@@ -778,7 +778,9 @@ public class Flow {
                 }
             }
             for (Entry<Symbol, List<JCRecordPattern>> e : deconstructionPatternsBySymbol.entrySet()) {
-                if (coversDeconstructionFromComponent(pos, targetType, e.getValue(), 0)) {
+                Type recordType = types.asSub(targetType, e.getValue().head.record);
+
+                if (coversDeconstructionFromComponent(pos, recordType, e.getValue(), 0)) {
                     coveredSymbols.add(e.getKey());
                 }
             }
@@ -786,7 +788,7 @@ public class Flow {
         }
 
         private boolean coversDeconstructionFromComponent(DiagnosticPosition pos,
-                                                          Type targetType,
+                                                          Type recordType,
                                                           List<JCRecordPattern> deconstructionPatterns,
                                                           int component) {
             //Given a set of record patterns for the same record, and a starting component,
@@ -809,7 +811,7 @@ public class Flow {
             }
 
             //for the first tested component, gather symbols covered by the nested patterns:
-            Type instantiatedComponentType = types.memberType(targetType, components.get(component));
+            Type instantiatedComponentType = types.memberType(recordType, components.get(component));
             List<JCPattern> nestedComponentPatterns = deconstructionPatterns.map(d -> d.nested.get(component));
             Set<Symbol> coveredSymbolsForComponent = coveredSymbols(pos, instantiatedComponentType,
                                                                     nestedComponentPatterns);
@@ -851,7 +853,7 @@ public class Flow {
             Set<Symbol> covered = new HashSet<>();
 
             for (Entry<Symbol, List<JCRecordPattern>> e : coveredSymbol2Patterns.entrySet()) {
-                if (coversDeconstructionFromComponent(pos, targetType, e.getValue(), component + 1)) {
+                if (coversDeconstructionFromComponent(pos, recordType, e.getValue(), component + 1)) {
                     covered.add(e.getKey());
                 }
             }
@@ -932,7 +934,7 @@ public class Flow {
                 }
                 case TYPEVAR -> isExhaustive(pos, ((TypeVar) seltype).getUpperBound(), covered);
                 default -> {
-                    yield covered.contains(seltype.tsym);
+                    yield covered.contains(types.erasure(seltype).tsym);
                 }
             };
         }
