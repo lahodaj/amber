@@ -1750,7 +1750,7 @@ public class Attr extends JCTree.Visitor {
                     } else if (label instanceof JCPatternCaseLabel patternlabel) {
                         //pattern
                         JCPattern pat = patternlabel.pat;
-                        attribExpr(pat, switchEnv);
+                        attribExpr(pat, switchEnv, seltype);
                         Type primaryType = TreeInfo.primaryPatternType(pat);
                         if (!primaryType.hasTag(TYPEVAR)) {
                             primaryType = chk.checkClassOrArrayType(pat.pos(), primaryType);
@@ -4074,7 +4074,7 @@ public class Attr extends JCTree.Visitor {
         if (tree.pattern.getTag() == BINDINGPATTERN ||
             tree.pattern.getTag() == PARENTHESIZEDPATTERN ||
             tree.pattern.getTag() == RECORDPATTERN) {
-            attribTree(tree.pattern, env, unknownExprInfo);
+            attribExpr(tree.pattern, env, exprtype);
             clazztype = tree.pattern.type;
             if (types.isSubtype(exprtype, clazztype) &&
                 !exprtype.isErroneous() && !clazztype.isErroneous() &&
@@ -4138,8 +4138,14 @@ public class Attr extends JCTree.Visitor {
     public void visitBindingPattern(JCBindingPattern tree) {
         Type type;
         if (tree.var.vartype != null) {
-            ResultInfo varInfo = new ResultInfo(KindSelector.TYP, resultInfo.pt, resultInfo.checkContext);
-            type = attribTree(tree.var.vartype, env, varInfo);
+            if (TreeInfo.isDiamond(tree.var.vartype)) {
+                ResultInfo varInfo = new ResultInfo(KindSelector.TYP, resultInfo.pt, resultInfo.checkContext);
+                type = attribTree(((JCTypeApply) tree.var.vartype).clazz, env, varInfo);
+                tree.var.vartype.type = type = types.infer(resultInfo.pt, type.tsym);
+            } else {
+                ResultInfo varInfo = new ResultInfo(KindSelector.TYP, Type.noType, resultInfo.checkContext);
+                type = attribTree(tree.var.vartype, env, varInfo);
+            }
         } else {
             type = resultInfo.pt;
         }
@@ -4162,7 +4168,20 @@ public class Attr extends JCTree.Visitor {
 
     @Override
     public void visitRecordPattern(JCRecordPattern tree) {
-        tree.type = attribType(tree.deconstructor, env);
+        boolean runInferrence = false;
+        Type type;
+        if (TreeInfo.isDiamond(tree.deconstructor)) {
+            JCExpression recordTypeTree = ((JCTypeApply) tree.deconstructor).clazz;
+            type = attribType(recordTypeTree, env);
+            runInferrence = true;
+        } else {
+            type = attribType(tree.deconstructor, env);
+            runInferrence = !tree.deconstructor.hasTag(TYPEAPPLY) && type.tsym.getTypeParameters().nonEmpty();
+        }
+        if (runInferrence) {
+            type = types.infer(resultInfo.pt, type.tsym);
+        }
+        tree.type = tree.deconstructor.type = type;
         Type site = types.removeWildcards(tree.type);
         List<Type> expectedRecordTypes;
         if (site.tsym.kind == Kind.TYP && ((ClassSymbol) site.tsym).isRecord()) {
@@ -4186,10 +4205,11 @@ public class Attr extends JCTree.Visitor {
         Env<AttrContext> localEnv = env.dup(tree, env.info.dup(env.info.scope.dup()));
         try {
             while (recordTypes.nonEmpty() && nestedPatterns.nonEmpty()) {
-                boolean nestedIsVarPattern = false;
-                nestedIsVarPattern |= nestedPatterns.head.hasTag(BINDINGPATTERN) &&
-                                      ((JCBindingPattern) nestedPatterns.head).var.vartype == null;
-                attribExpr(nestedPatterns.head, localEnv, nestedIsVarPattern ? recordTypes.head : Type.noType);
+                boolean needsTargetType = false;
+                needsTargetType |= nestedPatterns.head.hasTag(BINDINGPATTERN) &&
+                                   ((JCBindingPattern) nestedPatterns.head).var.vartype == null;
+                needsTargetType |= nestedPatterns.head.hasTag(RECORDPATTERN);
+                attribExpr(nestedPatterns.head, localEnv, needsTargetType ? recordTypes.head : Type.noType);
                 checkCastablePattern(nestedPatterns.head.pos(), recordTypes.head, nestedPatterns.head.type);
                 outBindings.addAll(matchBindings.bindingsWhenTrue);
                 matchBindings.bindingsWhenTrue.forEach(localEnv.info.scope::enter);
