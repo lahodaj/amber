@@ -49,6 +49,7 @@ import com.sun.tools.javac.comp.Attr;
 import com.sun.tools.javac.comp.AttrContext;
 import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.comp.Infer;
 import com.sun.tools.javac.parser.ParserFactory;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
@@ -64,6 +65,7 @@ import javax.tools.ToolProvider;
 public class InferenceUnitTest {
 
     JavacTaskImpl task;
+    Infer infer;
     Types types;
 
     public static void main(String... args) throws Exception {
@@ -88,6 +90,7 @@ public class InferenceUnitTest {
             }
         }));
         task.enter();
+        infer = Infer.instance(task.getContext());
         types = Types.instance(task.getContext());
 
         checkAsSub("A<String>", "B", "B<java.lang.String>");
@@ -95,7 +98,7 @@ public class InferenceUnitTest {
         checkAsSub("A<String>", "D", "D<?,java.lang.String>");
         checkAsSub("A<String>", "E", "E<java.lang.String>");
         checkAsSub("A<String>", "F", null);
-//        checkAsSub("A<String>", "G", null); // doesn't check bounds
+        checkAsSub("A<String>", "G", null); // doesn't check bounds
         checkAsSub("A<String>", "H", "H");
         checkAsSub("A<String>", "I", "I<?>");
 
@@ -166,7 +169,7 @@ public class InferenceUnitTest {
     private void checkAsSub(String base, String test, String expected) {
         Type baseType = parseType(base);
         TypeSymbol testType = parseType(test).tsym;
-        Type actualType = types.infer(baseType, testType);
+        Type actualType = infer.instantiatePatternType(null, baseType, testType);
         String actualTypeString = actualType != null ? actualType.toString() : null;
 //        Type expectedType = expected != null ? strToTypeFactory.getType(expected) : null;
         if (!Objects.equals(expected, actualTypeString)) {

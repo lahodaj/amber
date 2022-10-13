@@ -69,6 +69,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
 import static com.sun.tools.javac.code.TypeTag.*;
+import java.util.Comparator;
 
 /** Helper class for type parameter inference, used by the attribution phase.
  *
@@ -651,6 +652,108 @@ public class Infer {
             return owntype;
         }
     }
+
+    public Type instantiatePatternType(DiagnosticPosition pos, Type expressionType, TypeSymbol patternTypeSymbol) {
+        if (expressionType.tsym == patternTypeSymbol)
+            return expressionType; //TODO: shortcut desirable?
+        try {
+            //step 1:
+            Type expressionTypeCaptured = types.capture(expressionType);
+            List<Type> params = patternTypeSymbol.type.allparams();
+            List<Type> capturedWildcards = List.nil();
+            //add synthetic captured ivars
+            for (Type ta : expressionTypeCaptured.getTypeArguments()) {
+                if (ta.hasTag(TYPEVAR) && ((TypeVar)ta).isCaptured()) {
+                    params = params.prepend((TypeVar)ta);
+                    capturedWildcards = capturedWildcards.prepend(ta);
+                }
+            }
+            InferenceContext c = new InferenceContext(this, params);
+            Type patternType = c.asUndetVar(patternTypeSymbol.type);
+            Type exprType = c.asUndetVar(expressionTypeCaptured);
+
+            capturedWildcards.forEach(s -> ((UndetVar) c.asUndetVar(s)).setNormal());
+
+            //step 2:
+            Set<Symbol> patternTypeSuperTypes = new HashSet<>();
+            types.closure(patternTypeSymbol.type).stream().map(s -> s.tsym).forEach(patternTypeSuperTypes::add);
+            Set<Symbol> expressionTypeSuperTypes = new HashSet<>();
+            types.closure(expressionType).stream().map(s -> s.tsym).forEach(expressionTypeSuperTypes::add);
+            patternTypeSuperTypes.retainAll(expressionTypeSuperTypes);
+
+            for (Symbol common : patternTypeSuperTypes) {
+                Type fromPatternType = types.asSuper(patternType, common);
+                Type fromExprType = types.asSuper(exprType, common);
+                if (!types.isSameType(fromPatternType, fromExprType) && !fromExprType.isRaw()) {
+                    return null;
+                }
+            }
+
+            List<Type> varsToSolve = params.map(s -> c.asUndetVar(s));
+            doIncorporation(c, types.noWarnings); //TODO: warnings?
+            while (c.solveBasic(varsToSolve, EnumSet.of(InferenceStep.EQ)).nonEmpty()) {
+                doIncorporation(c, types.noWarnings);
+            }
+
+            //step 3:
+            ListBuffer<Type> freshVars = new ListBuffer<>();
+
+            Type substituted;
+            try {
+                substituted = new ClassType(patternType.getEnclosingType(), patternType.allparams().map(s -> (UndetVar) s).map(s -> {
+                    List<Type> bounds = InferenceStep.EQ.filterBounds(s, c);
+                    if (bounds.nonEmpty()) {
+                        return bounds.head;
+                    } else {
+                        //TODO: filterBounds
+                        TypeVar vt = new TypeVar(syms.noSymbol, getBounds(s, InferenceBound.UPPER, syms.objectType), getBounds(s, InferenceBound.LOWER, syms.botType));
+                        freshVars.add(vt);
+                        return vt;
+                    }
+                }), patternType.tsym);
+            } catch (Types.AdaptFailure ex) {
+                return null;
+            }
+
+            //step 4:
+            Type res = types.upward(substituted, freshVars.toList());
+            return res;
+        } catch (Infer.InferenceException ex) {
+            return null;
+        }
+    }
+    //where:
+            private Type getBounds(UndetVar ivar, InferenceBound boundKind, Type def) {
+                List<Type> bounds = ivar.getBounds(boundKind);
+                if (boundKind == InferenceBound.LOWER) {
+                    bounds = List.filter(bounds, syms.botType);
+                } else {
+                    //try to avoid unnecessary intersection types:
+                    bounds = List.filter(bounds, syms.objectType);
+                }
+                if (bounds.isEmpty()) return def;
+                else if (bounds.tail.isEmpty()) return bounds.head;
+                else {
+                    if (boundKind == InferenceBound.LOWER) {
+                        return types.lub(bounds);
+                    }
+                    Comparator<Pair<Type, Integer>> comp = (p1, p2) -> p2.snd - p1.snd;
+                    bounds = bounds.stream().map(type -> Pair.of(type, types.rank(type))).sorted(comp).map(p -> p.fst).collect(List.collector());
+                    bounds = types.closureMin(bounds);
+                    boolean seenClass = false;
+                    for (Type bound : bounds) {
+                        if (!bound.isInterface()) {
+                            if (seenClass) {
+                                //TODO: if more than one class bound, nothing can be infered?? (bounds check?)
+//                                throw new AdaptFailure();
+                            }
+                            seenClass = true;
+                        }
+                    }
+                    return types.makeIntersectionType(bounds);
+                }
+            }
+
     // </editor-fold>
 
     // <editor-fold defaultstate="collapsed" desc="Incorporation">

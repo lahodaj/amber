@@ -510,7 +510,7 @@ public class InferenceContext {
         }, warn);
     }
 
-    List<Type> solveBasic(List<Type> varsToSolve, EnumSet<InferenceStep> steps) {
+    public List<Type> solveBasic(List<Type> varsToSolve, EnumSet<InferenceStep> steps) {
         ListBuffer<Type> solvedVars = new ListBuffer<>();
         for (Type t : varsToSolve.intersect(restvars())) {
             UndetVar uv = (UndetVar)asUndetVar(t);

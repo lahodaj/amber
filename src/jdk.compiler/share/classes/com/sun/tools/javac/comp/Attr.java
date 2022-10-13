@@ -4141,7 +4141,7 @@ public class Attr extends JCTree.Visitor {
             if (TreeInfo.isDiamond(tree.var.vartype)) {
                 ResultInfo varInfo = new ResultInfo(KindSelector.TYP, resultInfo.pt, resultInfo.checkContext);
                 type = attribTree(((JCTypeApply) tree.var.vartype).clazz, env, varInfo);
-                tree.var.vartype.type = type = types.infer(resultInfo.pt, type.tsym);
+                tree.var.vartype.type = type = infer.instantiatePatternType(tree.pos(), resultInfo.pt, type.tsym);
             } else {
                 ResultInfo varInfo = new ResultInfo(KindSelector.TYP, Type.noType, resultInfo.checkContext);
                 type = attribTree(tree.var.vartype, env, varInfo);
@@ -4179,7 +4179,7 @@ public class Attr extends JCTree.Visitor {
             runInferrence = !tree.deconstructor.hasTag(TYPEAPPLY) && type.tsym.getTypeParameters().nonEmpty();
         }
         if (runInferrence) {
-            type = types.infer(resultInfo.pt, type.tsym);
+            type = infer.instantiatePatternType(tree.pos(), resultInfo.pt, type.tsym);
         }
         tree.type = tree.deconstructor.type = type;
         Type site = types.removeWildcards(tree.type);
