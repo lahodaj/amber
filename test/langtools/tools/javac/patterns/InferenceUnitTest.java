@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,24 +23,19 @@
 
 /*
  * @test
- * @summary TODO
+ * @summary Verify Infer.instantiatePatternType provides correct results
  * @library /tools/lib/types
  * @modules jdk.compiler/com.sun.tools.javac.api
- *          jdk.compiler/com.sun.tools.javac.main
  *          jdk.compiler/com.sun.tools.javac.code
  *          jdk.compiler/com.sun.tools.javac.comp
  *          jdk.compiler/com.sun.tools.javac.parser
  *          jdk.compiler/com.sun.tools.javac.tree
  *          jdk.compiler/com.sun.tools.javac.util
- *          jdk.compiler/com.sun.tools.javac.file
  * @run main InferenceUnitTest
  */
 
-import com.sun.source.util.JavacTask;
 import com.sun.tools.javac.api.JavacTaskImpl;
-import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symbol.TypeSymbol;
-import java.util.ArrayList;
 import java.util.List;
 
 import com.sun.tools.javac.code.Type;
@@ -51,7 +46,6 @@ import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.Env;
 import com.sun.tools.javac.comp.Infer;
 import com.sun.tools.javac.parser.ParserFactory;
-import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 import com.sun.tools.javac.util.Context;
 import java.io.IOException;
@@ -77,16 +71,16 @@ public class InferenceUnitTest {
             @Override
             public CharSequence getCharContent(boolean ignoreEncodingErrors) throws IOException {
                 return """
-                                       interface A<T> {}
-                                       interface B<T> extends A<T> {}
-                                       interface C<X,Y> extends A<X> {}
-                                       interface D<X,Y> extends A<Y> {}
-                                       interface E<T> extends C<T,T> {}
-                                       interface F<T> extends A<B<T>> {}
-                                       interface G<T extends Number> extends A<T> {}
-                                       interface H extends A<String> {}
-                                       interface I<T> extends H {}
-                                       """;
+                       interface A<T> {}
+                       interface B<T> extends A<T> {}
+                       interface C<X,Y> extends A<X> {}
+                       interface D<X,Y> extends A<Y> {}
+                       interface E<T> extends C<T,T> {}
+                       interface F<T> extends A<B<T>> {}
+                       interface G<T extends Number> extends A<T> {}
+                       interface H extends A<String> {}
+                       interface I<T> extends H {}
+                       """;
             }
         }));
         task.enter();
@@ -171,7 +165,6 @@ public class InferenceUnitTest {
         TypeSymbol testType = parseType(test).tsym;
         Type actualType = infer.instantiatePatternType(null, baseType, testType);
         String actualTypeString = actualType != null ? actualType.toString() : null;
-//        Type expectedType = expected != null ? strToTypeFactory.getType(expected) : null;
         if (!Objects.equals(expected, actualTypeString)) {
             error("Unexpected type, expected: " + expected + ", got: " + actualTypeString);
         }
