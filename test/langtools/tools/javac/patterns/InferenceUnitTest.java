@@ -28,6 +28,7 @@
  * @modules jdk.compiler/com.sun.tools.javac.api
  *          jdk.compiler/com.sun.tools.javac.code
  *          jdk.compiler/com.sun.tools.javac.comp
+ *          jdk.compiler/com.sun.tools.javac.model
  *          jdk.compiler/com.sun.tools.javac.parser
  *          jdk.compiler/com.sun.tools.javac.tree
  *          jdk.compiler/com.sun.tools.javac.util
@@ -35,16 +36,15 @@
  */
 
 import com.sun.tools.javac.api.JavacTaskImpl;
+import com.sun.tools.javac.code.Symbol.ClassSymbol;
 import com.sun.tools.javac.code.Symbol.TypeSymbol;
 import java.util.List;
 
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.Attr;
-import com.sun.tools.javac.comp.AttrContext;
-import com.sun.tools.javac.comp.Enter;
-import com.sun.tools.javac.comp.Env;
 import com.sun.tools.javac.comp.Infer;
+import com.sun.tools.javac.model.JavacElements;
 import com.sun.tools.javac.parser.ParserFactory;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 import com.sun.tools.javac.util.Context;
@@ -80,6 +80,8 @@ public class InferenceUnitTest {
                        interface G<T extends Number> extends A<T> {}
                        interface H extends A<String> {}
                        interface I<T> extends H {}
+                       class Test<T1 extends CharSequence&Runnable> {
+                       }
                        """;
             }
         }));
@@ -157,7 +159,7 @@ public class InferenceUnitTest {
 
         checkAsSub("B<String>", "C", "C<java.lang.String,?>"); // no sideways casts
 
-        //TODO: tests that use type variables!
+        checkAsSub("A<T1>", "B", "B<T1>");
     }
 
     private void checkAsSub(String base, String test, String expected) {
@@ -174,8 +176,9 @@ public class InferenceUnitTest {
         ParserFactory fact = ParserFactory.instance(context);
         JCExpression specTypeTree = fact.newParser(spec, false, false, false).parseType();
         Attr attr = Attr.instance(context);
-        Env<AttrContext> env = Enter.instance(context).getEnvs().iterator().next();
-        return attr.attribType(specTypeTree, env);
+        JavacElements elementUtils = JavacElements.instance(context);
+        ClassSymbol testClass = elementUtils.getTypeElement("Test");
+        return attr.attribType(specTypeTree, testClass);
     }
 
     /** assert that 's' is the same type as 't' */
