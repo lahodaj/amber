@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2014, 2025, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -38,6 +38,8 @@ include Modules.gmk
 # langtools modules. Each interim module has ".interim" added as suffix to the
 # original module name.
 
+JDK_COMPILER_MODEL := com/sun/source/doctree/SystemPropertyTree.java com/sun/source/doctree/StartElementTree.java com/sun/source/doctree/DocRootTree.java com/sun/source/doctree/ReferenceTree.java com/sun/source/doctree/SnippetTree.java com/sun/source/doctree/ThrowsTree.java com/sun/source/doctree/LiteralTree.java com/sun/source/doctree/ValueTree.java com/sun/source/doctree/IndexTree.java com/sun/source/doctree/SerialFieldTree.java com/sun/source/doctree/InheritDocTree.java com/sun/source/doctree/UsesTree.java com/sun/source/doctree/ParamTree.java com/sun/source/doctree/InlineTagTree.java com/sun/source/doctree/AuthorTree.java com/sun/source/doctree/SinceTree.java com/sun/source/doctree/TextTree.java com/sun/source/doctree/DocTree.java com/sun/source/doctree/HiddenTree.java com/sun/source/doctree/CommentTree.java com/sun/source/doctree/IdentifierTree.java com/sun/source/doctree/DocCommentTree.java com/sun/source/doctree/package-info.java com/sun/source/doctree/RawTextTree.java com/sun/source/doctree/UnknownBlockTagTree.java com/sun/source/doctree/ProvidesTree.java com/sun/source/doctree/ReturnTree.java com/sun/source/doctree/DocTypeTree.java com/sun/source/doctree/DeprecatedTree.java com/sun/source/doctree/DocTreeVisitor.java com/sun/source/doctree/SerialTree.java com/sun/source/doctree/SerialDataTree.java com/sun/source/doctree/SummaryTree.java com/sun/source/doctree/SpecTree.java com/sun/source/doctree/ErroneousTree.java com/sun/source/doctree/SeeTree.java com/sun/source/doctree/EscapeTree.java com/sun/source/doctree/EntityTree.java com/sun/source/doctree/VersionTree.java com/sun/source/doctree/AttributeTree.java com/sun/source/doctree/BlockTagTree.java com/sun/source/doctree/LinkTree.java com/sun/source/doctree/EndElementTree.java com/sun/source/doctree/UnknownInlineTagTree.java com/sun/source/tree/BlockTree.java com/sun/source/tree/BreakTree.java com/sun/source/tree/ParenthesizedTree.java com/sun/source/tree/StatementTree.java com/sun/source/tree/ThrowTree.java com/sun/source/tree/ModuleTree.java com/sun/source/tree/AssignmentTree.java com/sun/source/tree/InstanceOfStatementTree.java com/sun/source/tree/SwitchExpressionTree.java com/sun/source/tree/ForLoopTree.java com/sun/source/tree/LiteralTree.java com/sun/source/tree/CatchTree.java com/sun/source/tree/ExpressionStatementTree.java com/sun/source/tree/TryTree.java com/sun/source/tree/ExportsTree.java com/sun/source/tree/ArrayTypeTree.java com/sun/source/tree/ConditionalExpressionTree.java com/sun/source/tree/OpensTree.java com/sun/source/tree/DirectiveTree.java com/sun/source/tree/UnaryTree.java com/sun/source/tree/ContinueTree.java com/sun/source/tree/VariableTree.java com/sun/source/tree/UsesTree.java com/sun/source/tree/WildcardTree.java com/sun/source/tree/LambdaExpressionTree.java com/sun/source/tree/AssertTree.java com/sun/source/tree/ParameterizedTypeTree.java com/sun/source/tree/PatternCaseLabelTree.java com/sun/source/tree/ImportTree.java com/sun/source/tree/RequiresTree.java com/sun/source/tree/ExpressionTree.java com/sun/source/tree/LabeledStatementTree.java com/sun/source/tree/Tree.java com/sun/source/tree/AnnotationTree.java com/sun/source/tree/MemberReferenceTree.java com/sun/source/tree/CompilationUnitTree.java com/sun/source/tree/EmptyStatementTree.java com/sun/source/tree/UnionTypeTree.java com/sun/source/tree/PrimitiveTypeTree.java com/sun/source/tree/CompoundAssignmentTree.java com/sun/source/tree/ClassTree.java com/sun/source/tree/ArrayAccessTree.java com/sun/source/tree/PatternTree.java com/sun/source/tree/AnyPatternTree.java com/sun/source/tree/CaseLabelTree.java com/sun/source/tree/IdentifierTree.java com/sun/source/tree/WhileLoopTree.java com/sun/source/tree/AnnotatedTypeTree.java com/sun/source/tree/package-info.java com/sun/source/tree/TypeParameterTree.java com/sun/source/tree/BinaryTree.java com/sun/source/tree/ProvidesTree.java com/sun/source/tree/IfTree.java com/sun/source/tree/NewArrayTree.java com/sun/source/tree/ModifiersTree.java com/sun/source/tree/DefaultCaseLabelTree.java com/sun/source/tree/MethodTree.java com/sun/source/tree/ReturnTree.java com/sun/source/tree/TreeVisitor.java com/sun/source/tree/YieldTree.java com/sun/source/tree/NewClassTree.java com/sun/source/tree/SwitchTree.java com/sun/source/tree/Scope.java com/sun/source/tree/IntersectionTypeTree.java com/sun/source/tree/ConstantCaseLabelTree.java com/sun/source/tree/EnhancedForLoopTree.java com/sun/source/tree/ErroneousTree.java com/sun/source/tree/MemberSelectTree.java com/sun/source/tree/InstanceOfTree.java com/sun/source/tree/DoWhileLoopTree.java com/sun/source/tree/PackageTree.java com/sun/source/tree/MatchTree.java com/sun/source/tree/DeconstructionPatternTree.java com/sun/source/tree/SynchronizedTree.java com/sun/source/tree/BindingPatternTree.java com/sun/source/tree/TypeCastTree.java com/sun/source/tree/MethodInvocationTree.java com/sun/source/tree/CaseTree.java com/sun/source/tree/LineMap.java com/sun/source/util/DocTreePathScanner.java com/sun/source/util/TaskListener.java com/sun/source/util/SimpleTreeVisitor.java com/sun/source/util/DocSourcePositions.java com/sun/source/util/Trees.java com/sun/source/util/TreeScanner.java com/sun/source/util/DocTreePath.java com/sun/source/util/ParameterNameProvider.java com/sun/source/util/DocTreeFactory.java com/sun/source/util/JavacTask.java com/sun/source/util/package-info.java com/sun/source/util/DocTrees.java com/sun/source/util/TreePathScanner.java com/sun/source/util/SimpleDocTreeVisitor.java com/sun/source/util/SourcePositions.java com/sun/source/util/Plugin.java com/sun/source/util/TreePath.java com/sun/source/util/DocTreeScanner.java com/sun/source/util/TaskEvent.java
+
 INTERIM_MODULEINFO_PATTERN := \
     $(foreach m, $(INTERIM_LANGTOOLS_BASE_MODULES), -e 's/$m\([,; ]\)/$m.interim\1/g')
 
@@ -47,8 +49,17 @@ $(BUILDTOOLS_OUTPUTDIR)/gensrc/%.interim/module-info.java: \
 	$(call MakeDir, $(@D))
 	$(SED) $(INTERIM_MODULEINFO_PATTERN) $< > $@
 
+$(BUILDTOOLS_OUTPUTDIR)/gensrc/jdk.compiler.interim/com/sun/source/%.java: \
+    $(TOPDIR)/src/jdk.compiler/share/classes/com/sun/source/%.java
+	$(call LogInfo, Generating AST trees for jdk.compiler.interim)
+	$(call MakeDir, $(@D))
+	$(SED) -e '/interim-skip-start/,/interim-skip-end/{d}' $< > $@
+
 TARGETS += $(patsubst %, $(BUILDTOOLS_OUTPUTDIR)/gensrc/%/module-info.java, \
     $(INTERIM_LANGTOOLS_MODULES))
+
+TARGETS += $(patsubst %, $(BUILDTOOLS_OUTPUTDIR)/gensrc/jdk.compiler.interim/%, \
+    $(JDK_COMPILER_MODEL))
 
 ################################################################################
 # Generate interim versions of the ToolProvider.java files for the interim
@@ -66,6 +77,10 @@ $(BUILDTOOLS_OUTPUTDIR)/gensrc/java.compiler.interim/javax/tools/ToolProvider.ja
 
 java.compiler.interim_EXTRA_FILES := \
     $(BUILDTOOLS_OUTPUTDIR)/gensrc/java.compiler.interim/javax/tools/ToolProvider.java
+
+jdk.compiler.interim_EXTRA_FILES := \
+    $(patsubst %, $(BUILDTOOLS_OUTPUTDIR)/gensrc/jdk.compiler.interim/%, \
+        $(JDK_COMPILER_MODEL))
 
 TARGETS += $(BUILDTOOLS_OUTPUTDIR)/gensrc/java.compiler.interim/javax/tools/ToolProvider.java
 
@@ -104,6 +119,9 @@ define SetupInterimModule
           $(TOPDIR)/src/$1/share/classes/com/sun/tools/javac/launcher/MemoryContext.java \
           $(TOPDIR)/src/$1/share/classes/com/sun/tools/javac/launcher/MemoryModuleFinder.java \
           $(TOPDIR)/src/$1/share/classes/com/sun/tools/javac/launcher/SourceLauncher.java \
+          $(TOPDIR)/src/$1/share/classes/com/sun/source/doctree/*.java \
+          $(TOPDIR)/src/$1/share/classes/com/sun/source/tree/*.java \
+          $(TOPDIR)/src/$1/share/classes/com/sun/source/util/*.java \
           Standard.java, \
       EXTRA_FILES := $(BUILDTOOLS_OUTPUTDIR)/gensrc/$1.interim/module-info.java \
           $($1.interim_EXTRA_FILES), \

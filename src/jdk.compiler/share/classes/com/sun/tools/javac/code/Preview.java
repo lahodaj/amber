@@ -28,6 +28,7 @@ package com.sun.tools.javac.code;
 import com.sun.tools.javac.code.Lint.LintCategory;
 import com.sun.tools.javac.code.Source.Feature;
 import com.sun.tools.javac.code.Symbol.ModuleSymbol;
+import com.sun.tools.javac.comp.Check;
 import com.sun.tools.javac.jvm.Target;
 import com.sun.tools.javac.resources.CompilerProperties.Errors;
 import com.sun.tools.javac.resources.CompilerProperties.LintWarnings;
@@ -225,7 +226,7 @@ public class Preview {
     public boolean isPreview(Feature feature) {
         return switch (feature) {
             case IMPLICIT_CLASSES -> true;
-            case PATTERN_DECLARATIONS -> true;
+//            case PATTERN_DECLARATIONS -> true;
             case FLEXIBLE_CONSTRUCTORS -> true;
             case PRIMITIVE_PATTERNS -> true;
             case MODULE_IMPORTS -> true;

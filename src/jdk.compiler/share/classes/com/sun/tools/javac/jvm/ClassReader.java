@@ -300,7 +300,7 @@ public class ClassReader {
         preview = Preview.instance(context);
         allowModules     = Feature.MODULES.allowedInSource(source);
         allowRecords = Feature.RECORDS.allowedInSource(source);
-        allowPatterns = preview.isEnabled() && Feature.PATTERN_DECLARATIONS.allowedInSource(source);
+        allowPatterns = Feature.PATTERN_DECLARATIONS.allowedInSource(source);
         allowSealedTypes = Feature.SEALED_CLASSES.allowedInSource(source);
         warnOnIllegalUtf8 = Feature.WARN_ON_ILLEGAL_UTF8.allowedInSource(source);
 
@@ -1070,11 +1070,20 @@ public class ClassReader {
                         }
                     } else {
                         List<Type> thrown = sym.type.getThrownTypes();
-                        sym.type = poolReader.getType(nextChar());
+                        Type mtype = poolReader.getType(nextChar());
+                        if (!sym.type.hasTag(TypeTag.PATTERN)) {
+                            sym.type = mtype;
+                        } else {
+                            sym.type = new PatternType(mtype.getParameterTypes(), syms.voidType, syms.methodClass);
+                        }
                         //- System.err.println(" # " + sym.type);
-                        if (sym.kind == MTH && sym.type.getThrownTypes().isEmpty())
-                            sym.type.asMethodType().thrown = thrown;
-
+                        if (sym.kind == MTH && sym.type.getThrownTypes().isEmpty()) {
+                            if (!sym.type.hasTag(TypeTag.PATTERN)) {
+                                sym.type.asMethodType().thrown = thrown;
+                            } else {
+                                //TODO: no thrown types for PatternType
+                            }
+                        }
                     }
                 }
             },
@@ -1377,10 +1386,12 @@ public class ClassReader {
                         parameterNameIndicesMp = null;
                         parameterAccessFlags = null;
 
+                        MethodSymbol msym = (MethodSymbol) sym;
+                        msym.type = new PatternType(patternType.getParameterTypes(), syms.voidType, syms.methodClass);
+
                         readMemberAttrs(sym);
 
-                        MethodSymbol msym = (MethodSymbol) sym;
-                        msym.bindings = computeParamsFromAttribute(msym, patternType.getParameterTypes(), 0);
+                        msym.bindings = computeParamsFromAttribute(msym, msym.type.asPatternType().getBindingTypes(), 0);
 
                         parameterAnnotations = oldParameterAnnotations;
                         parameterNameIndicesLvt = oldParameterNameIndicesLvt;
@@ -1400,14 +1411,10 @@ public class ClassReader {
                         if (msym.patternFlags.contains(PatternFlags.DECONSTRUCTOR)) {
                             //TODO: should check the method is static, and has a reasonable first/only parameter?
                             //reconstitue the deconstructor back:
-                            MethodType mtype = msym.type.asMethodType();
-                            mtype.argtypes = mtype.argtypes.tail;
                             msym.flags_field &= ~Flags.STATIC;
                         }
 
                         // todo: check if special handling is needed similar to generic methods for binding types
-
-                        msym.type = new PatternType(patternType.getParameterTypes(), syms.voidType, syms.methodClass);
                     }
                 }
             },

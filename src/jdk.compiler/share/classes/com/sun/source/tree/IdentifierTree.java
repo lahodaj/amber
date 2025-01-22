@@ -47,4 +47,10 @@ public interface IdentifierTree extends ExpressionTree {
      * @return the name
      */
     Name getName();
+
+//interim-skip-start
+    public pattern IdentifierTree(Name name) {
+        match IdentifierTree(getName());
+    }
+//interim-skip-end
 }

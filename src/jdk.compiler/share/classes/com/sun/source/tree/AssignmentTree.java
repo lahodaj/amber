@@ -51,4 +51,10 @@ public interface AssignmentTree extends ExpressionTree {
      * @return the expression
      */
     ExpressionTree getExpression();
+
+//interim-skip-start
+    public pattern AssignmentTree(ExpressionTree variable, ExpressionTree expression) {
+        match AssignmentTree(getVariable(), getExpression());
+    }
+//interim-skip-end
 }

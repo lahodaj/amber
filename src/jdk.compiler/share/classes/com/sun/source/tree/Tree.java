@@ -25,6 +25,9 @@
 
 package com.sun.source.tree;
 
+import com.sun.source.util.TreeScanner;
+import java.util.ArrayList;
+import java.util.List;
 import jdk.internal.javac.PreviewFeature;
 
 /**
@@ -757,4 +760,22 @@ public interface Tree {
      * @return the result returned from calling the visitor
      */
     <R,D> R accept(TreeVisitor<R,D> visitor, D data);
+
+//interim-skip-start
+    public pattern Tree(Tree[] children) {
+        List<Tree> children = new ArrayList<>();
+        accept(new TreeScanner<>() {
+            @Override
+            public Object scan(Tree tree, Object p) {
+                if (tree != null) {
+                    children.add(tree);
+                }
+                return null;
+            }
+            
+        }, null);
+//        match Tree(children.toArray(Tree[]::new));
+        match Tree(children.toArray(s -> new Tree[s]));
+    }
+//interim-skip-end
 }

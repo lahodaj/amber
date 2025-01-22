@@ -55,4 +55,10 @@ public interface MemberSelectTree extends ExpressionTree {
      * @return the member
      */
     Name getIdentifier();
+    
+//interim-skip-start
+    public pattern MemberSelectTree(ExpressionTree selector, Name identifier) {
+        match MemberSelectTree(getExpression(), getIdentifier());
+    }
+//interim-skip-end
 }

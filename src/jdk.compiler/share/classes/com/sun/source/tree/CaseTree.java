@@ -136,4 +136,35 @@ public interface CaseTree extends Tree {
          */
         RULE;
     }
+
+//interim-skip-start
+    //deconstructors to map the history (to try how evolution would work):
+
+    //deconstructor the original pre-JDK 14 state:
+    public pattern CaseTree(ExpressionTree expression, List<? extends StatementTree> statements) {
+        match CaseTree(getExpression(), getStatements());
+    }
+
+     //since 14
+     public pattern CaseTree(List<? extends ExpressionTree> expression, List<? extends StatementTree> statements) {
+         //partial matcher (based on CaseKind)?
+         match CaseTree(getExpressions(), getStatements());
+     }
+
+     public pattern CaseTree(List<? extends ExpressionTree> expression, Tree body) {
+         //partial matcher (based on CaseKind)?
+         match CaseTree(getExpressions(), getBody());
+     }
+
+     //since 21:
+     public pattern CaseTree(List<? extends CaseLabelTree> labels, List<? extends StatementTree> statements, ExpressionTree guard) {
+         //partial matcher (based on CaseKind)?
+         match CaseTree(getLabels(), getStatements(), getGuard());
+     }
+
+     public pattern CaseTree(List<? extends CaseLabelTree> labels, Tree body, ExpressionTree guard) {
+         //partial matcher (based on CaseKind)?
+         match CaseTree(getLabels(), getBody(), getGuard());
+     }
+//interim-skip-end
 }
