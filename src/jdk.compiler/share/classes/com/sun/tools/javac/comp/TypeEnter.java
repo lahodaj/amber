@@ -1334,6 +1334,35 @@ public class TypeEnter implements Completer {
                 memberEnter.memberEnter(equals, env);
             }
 
+            {
+                FOUND: for (Symbol s : tree.sym.members().getSymbolsByName(tree.name, s -> s.isDeconstructor())) {
+                    if (types.isSameTypes(s.type.getBindingTypes(), tree.sym.getRecordComponents().map(rc -> rc.type))) {
+                        break FOUND;
+                    }
+                }
+
+                JCMethodDecl deconstructor = make.
+                    MethodDef(make.Modifiers(Flags.PUBLIC | Flags.RECORD | Flags.FINAL | Flags.GENERATED_MEMBER | Flags.PATTERN),
+                              tree.name,
+                              null,
+                              List.nil(),
+                              List.nil(),
+                              List.nil(),
+                              null,
+                              null);
+                deconstructor.bindings = tree.sym.getRecordComponents().map(rc -> make.VarDef(make.Modifiers(0),
+                                                rc.name,
+                                                make.Type(rc.type), null));
+                deconstructor.matchcandparam = make.VarDef(make.Modifiers(0),
+                                                names._that,
+                                                make.Type(tree.type), null);
+                memberEnter.memberEnter(deconstructor, env);
+                //these flags are normally added in Attr, but since there's
+                //no tree for the deconstructor, that does not happen, doing it here:
+                deconstructor.sym.patternFlags.add(PatternFlags.DECONSTRUCTOR);
+                deconstructor.sym.patternFlags.add(PatternFlags.TOTAL);
+            }
+
             // fields can't be varargs, lets remove the flag
             List<JCVariableDecl> recordFields = TreeInfo.recordFields(tree);
             for (JCVariableDecl field: recordFields) {

@@ -2485,7 +2485,8 @@ public class Lower extends TreeTranslator {
         tree.defs = tree.defs.appendList(List.of(
                 generateRecordMethod(tree, names.toString, vars, getterMethHandles),
                 generateRecordMethod(tree, names.hashCode, vars, getterMethHandles),
-                generateRecordMethod(tree, names.equals, vars, getterMethHandles)
+                generateRecordMethod(tree, names.equals, vars, getterMethHandles),
+                generateSyntheticRecordDeconstructor(tree, vars, getterMethHandles)
         ));
     }
 
@@ -2538,6 +2539,66 @@ public class Lower extends TreeTranslator {
             }
             proxyCall.type = qualifier.type;
             return make.MethodDef(msym, make.Block(0, List.of(make.Return(proxyCall))));
+        } else {
+            return make.Block(SYNTHETIC, List.nil());
+        }
+    }
+
+    JCTree generateSyntheticRecordDeconstructor(JCClassDecl tree, List<VarSymbol> vars, MethodHandleSymbol[] getterMethHandles) {
+        make_at(tree.pos());
+        List<Type> componentTypes = tree.sym.getRecordComponents().map(rc -> rc.type);
+        MethodSymbol deconstructor = (MethodSymbol) tree.sym.members().getSymbolsByName(tree.name, sym -> sym.isDeconstructor() && types.containsTypeEquivalent(sym.type.getBindingTypes(), componentTypes)).iterator().next();
+        // compiler generated methods have the record flag set, user defined ones dont
+        if ((deconstructor.flags() & RECORD) != 0) {
+            /* class java.lang.runtime.ObjectMethods provides a common bootstrap that provides a customized implementation
+             * for methods: toString, hashCode and equals. Here we just need to generate and indy call to:
+             * java.lang.runtime.ObjectMethods::bootstrap and provide: the record class, the record component names and
+             * the accessors.
+             */
+            Name bootstrapName = names.bootstrap;
+            LoadableConstant[] staticArgsValues = new LoadableConstant[2 + getterMethHandles.length];
+            staticArgsValues[0] = (ClassType)tree.sym.type;
+            String concatNames = vars.stream()
+                    .map(v -> v.name)
+                    .collect(Collectors.joining(";", "", ""));
+            staticArgsValues[1] = LoadableConstant.String(concatNames);
+            int index = 2;
+            for (MethodHandleSymbol mho : getterMethHandles) {
+                staticArgsValues[index] = mho;
+                index++;
+            }
+
+            List<Type> staticArgTypes = List.of(syms.classType,
+                    syms.stringType,
+                    new ArrayType(syms.methodHandleType, syms.arrayClass));
+
+            MethodSymbol bsm = rs.resolveInternalMethod(tree.pos(), attrEnv, syms.objectMethodsType,
+                    bootstrapName, List.of(syms.methodHandleLookupType,
+                                syms.stringType,
+                                syms.typeDescriptorType).appendList(staticArgTypes), List.nil());
+
+            MethodType indyType = new MethodType(
+                    List.of(deconstructor.type.asPatternType().matchcandidatetype),
+                    syms.objectType,
+                    List.nil(),
+                    syms.methodClass
+            );
+            DynamicMethodSymbol dynSym = new DynamicMethodSymbol(names.fromString("deconstructor"),
+                    syms.noSymbol,
+                    bsm.asHandle(),
+                    indyType,
+                    staticArgsValues);
+            JCFieldAccess qualifier = make.Select(make.QualIdent(syms.objectMethodsType.tsym), names.fromString("deconstructor"));
+            qualifier.sym = dynSym;
+            qualifier.type = syms.objectType;
+
+            VarSymbol _this = new VarSymbol(SYNTHETIC, names._this, tree.sym.type, tree.sym);
+
+            JCMethodInvocation proxyCall;
+
+            proxyCall = make.Apply(List.nil(), qualifier, List.of(make.Ident(_this)));
+            proxyCall.type = qualifier.type;
+            return make.MethodDef(deconstructor, make.Block(0, List.of(make.Return(proxyCall))));
         } else {
             return make.Block(SYNTHETIC, List.nil());
         }
@@ -2656,7 +2717,7 @@ public class Lower extends TreeTranslator {
                 syms.methodClass);
         }
 
-        if (tree.sym.isPattern()) {
+        if (tree.sym.isPattern() && (tree.sym.flags_field & GENERATED_MEMBER) == 0) {
             MethodSymbol m = tree.sym;
             tree.sym.flags_field  |= SYNTHETIC;
             tree.mods.flags |= SYNTHETIC;

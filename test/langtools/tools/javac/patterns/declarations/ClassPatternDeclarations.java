@@ -30,13 +30,14 @@
 import java.util.Objects;
 
 public class ClassPatternDeclarations {
-    public static void main(String... args) {
+    public static void main(String... args) throws NoSuchPatternException {
         assertEquals("A:B",  test1A(new Person1("A", "B", false)));
         assertEquals("A",    test1B(new Person1("A", "B", false)));
         assertEquals("Duke", test2(new Person1("Duke", "Java", false)));
         assertEquals("DUKE", test2(new Person1("Duke", "Java", true)));
         assertEquals("A:B",  testInSwitch1(new Person1("A", "B", false)));
         assertEquals("A:B",  testInSwitch2(new Person2("A", "B")));
+        Person2.class.getDeconstructor(String.class, String.class);
     }
 
     private static String test1A(Object o) {

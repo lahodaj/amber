@@ -1066,7 +1066,7 @@ public class TreeMaker implements JCTree.Factory {
      *  and a method body.
      */
     public JCMethodDecl MethodDef(MethodSymbol m, Type mtype, JCBlock body) {
-        return (JCMethodDecl)
+        JCMethodDecl result = (JCMethodDecl)
             new JCMethodDecl(
                 Modifiers(m.flags(), Annotations(m.getRawAttributes())),
                 m.name,
@@ -1078,6 +1078,11 @@ public class TreeMaker implements JCTree.Factory {
                 body,
                 null,
                 m).setPos(pos).setType(mtype);
+        if (mtype.hasTag(TypeTag.PATTERN)) {
+            result.bindings = m.bindings.map(b -> VarDef(b, null));
+            result.matchcandparam = VarDef(new VarSymbol(0, names._that, mtype.asPatternType().getMatchCandidateType(), m), null);
+        }
+        return result;
     }
 
     /** Create a type parameter tree from its name and type.

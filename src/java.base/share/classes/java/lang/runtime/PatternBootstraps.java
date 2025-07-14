@@ -59,7 +59,7 @@ public class PatternBootstraps {
         static {
             try {
                 SYNTHETIC_PATTERN = LOOKUP.findStatic(PatternBootstraps.class, "syntheticPattern",
-                        MethodType.methodType(Object.class, Method[].class, MethodHandle.class, Object.class, MethodHandle.class));
+                        MethodType.methodType(Object.class, MethodHandle[].class, MethodHandle.class, Object.class, MethodHandle.class));
             } catch (ReflectiveOperationException e) {
                 throw new ExceptionInInitializerError(e);
             }
@@ -162,20 +162,28 @@ public class PatternBootstraps {
         @SuppressWarnings("removal") final RecordComponent[] components = AccessController.doPrivileged(
                 (PrivilegedAction<RecordComponent[]>) matchCandidateType::getRecordComponents);
 
-        Method[] accessors = Arrays.stream(components).map(c -> {
+        MethodHandle[] accessors = Arrays.stream(components).map(c -> {
             Method accessor = c.getAccessor();
             accessor.setAccessible(true);
-            return accessor;
-        }).toArray(Method[]::new);
+            try {
+                return LOOKUP.unreflect(accessor);
+            } catch (IllegalAccessException ex) {
+                throw new IllegalArgumentException(ex);
+            }
+        }).toArray(MethodHandle[]::new);
 
-        Class<?>[] ctypes = Arrays.stream(components).map(c -> c.getType()).toArray(Class<?>[]::new);
+        return syntheticPattern(accessors).asType(invocationType);
+    }
+
+    static MethodHandle syntheticPattern(MethodHandle[] accessors) {
+        Class<?>[] ctypes = Arrays.stream(accessors).map(c -> c.type().returnType()).toArray(Class<?>[]::new);
 
         MethodHandle spreaderInvoker = MethodHandles.spreadInvoker(MethodType.methodType(Object.class, ctypes), 0);
 
         return MethodHandles.insertArguments(StaticHolders.SYNTHETIC_PATTERN,
                 0,
                 accessors,
-                spreaderInvoker).asType(invocationType);
+                spreaderInvoker);
     }
 
     enum PatternUseSite {
@@ -207,13 +215,11 @@ public class PatternBootstraps {
      * @return initialized carrier object
      * @throws Throwable throws if invocation of synthetic pattern fails
      */
-    private static Object syntheticPattern(Method[] accessors, MethodHandle spreaderInvoker, Object matchCandidateInstance, MethodHandle carrierCreator) throws Throwable {
+    private static Object syntheticPattern(MethodHandle[] accessors, MethodHandle spreaderInvoker, Object matchCandidateInstance, MethodHandle carrierCreator) throws Throwable {
         Object[] extracted = Arrays.stream(accessors).map(accessor -> {
             try {
                 return accessor.invoke(matchCandidateInstance);
-            } catch (IllegalAccessException e) {
-                throw new MatchException(null, e.getCause());
-            } catch (InvocationTargetException e) {
+            } catch (Throwable e) {
                 throw new MatchException(null, e.getCause());
             }
         }).toArray();

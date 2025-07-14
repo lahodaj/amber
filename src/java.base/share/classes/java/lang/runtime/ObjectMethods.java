@@ -227,6 +227,11 @@ public final class ObjectMethods {
         return accumulator;
     }
 
+    private static MethodHandle makeDeconstructor(Class<?> receiverClass,
+                                            List<MethodHandle> getters) {
+        return PatternBootstraps.syntheticPattern(getters.toArray(MethodHandle[]::new));
+    }
+
     /**
      * Generates a method handle for the {@code toString} method for a given data class
      * @param receiverClass   the data class
@@ -409,6 +414,11 @@ public final class ObjectMethods {
                 if (methodType != null && !methodType.equals(MethodType.methodType(int.class, recordClass)))
                     throw new IllegalArgumentException("Bad method type: " + methodType);
                 yield makeHashCode(recordClass, getterList);
+            }
+            case "deconstructor" -> {
+                if (methodType != null && !methodType.equals(MethodType.methodType(Object.class, recordClass)))
+                    throw new IllegalArgumentException("Bad method type: " + methodType);
+                yield makeDeconstructor(recordClass, getterList);
             }
             case "toString" -> {
                 if (methodType != null && !methodType.equals(MethodType.methodType(String.class, recordClass)))
